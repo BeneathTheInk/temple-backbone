@@ -17,6 +17,10 @@ var Temple = (function() {
 }).call(typeof window !== "undefined" ? window : this);
 
 module.exports = function() {
+	// attach handlers
+	this.handle(ModelHandler);
+	this.handle(CollectionHandler);
+
 	// set up events
 	this.listenTo = Backbone.Events.listenTo;
 	this.listenToOnce = Backbone.Events.listenToOnce;
@@ -24,9 +28,10 @@ module.exports = function() {
 	this.off = this.removeListener;
 	this.trigger = this.emit;
 
-	// attach handlers
-	this.handle(ModelHandler);
-	this.handle(CollectionHandler);
+	// clean up
+	this.once("destroy", function() {
+		this.stopListening();
+	});
 }
 
 var ModelHandler = {
@@ -37,12 +42,8 @@ var ModelHandler = {
 		var self = this;
 
 		model.on("change", this._backboneListener = function() {
-			var nval; 
-
 			for (var k in this.changed) {
-				nval = this.get(k);
-				self.set(k, nval, { notify: false });
-				self.notify(k, nval, this.previous(k));
+				self.notify(k, this.changed[k], this.previous(k));
 			}
 		});
 	},
@@ -82,24 +83,18 @@ var CollectionHandler = {
 			this.each(function(model, index) {
 				var oval;
 
-				// update index value first
 				oval = self.get(index);
-				if (oval !== model) {
-					self.set(index, model, { notify: false });
-					self.notify(index, model, oval);
+				if (oval !== model) self.notify(index, model, oval);
+
+
+				if (model.id != null) {
+					oval = self.get(model.id);
+					if (oval !== model) self.notify(model.id, model, oval);
 				}
 
-				// then id value first
-				if (model.id) {
-					oval = self.get(model.id);
-					
-					if (oval !== model) {
-						self.set(model.id, model, { notify: false });
-						self.notify(model.id, model, oval);
-					}
-				}
-			})
-			// self.notify([], col);
+				oval = self.get(model.cid);
+				if (oval !== model) self.notify(model.cid, model, oval);
+			});
 		});
 	},
 	isLeaf: function() { return false; },

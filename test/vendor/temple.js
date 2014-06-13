@@ -2,7 +2,7 @@
  * Temple
  * (c) 2014 Beneath the Ink, Inc.
  * MIT License
- * Version 0.2.8
+ * Version 0.2.9-rc1
  */
 
 !function(e){if("object"==typeof exports&&"undefined"!=typeof module)module.exports=e();else if("function"==typeof define&&define.amd)define([],e);else{var f;"undefined"!=typeof window?f=window:"undefined"!=typeof global?f=global:"undefined"!=typeof self&&(f=self),f.Temple=e()}}(function(){var define,module,exports;return (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);throw new Error("Cannot find module '"+o+"'")}var f=n[o]={exports:{}};t[o][0].call(f.exports,function(e){var n=t[o][1][e];return s(n?n:e)},f,f.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(_dereq_,module,exports){
@@ -46,6 +46,14 @@ module.exports = Binding.extend({
 
 	toString: function() {
 		return this.view.toString();
+	},
+
+	find: function(selector) {
+		return this.view.find(selector);
+	},
+
+	findAll: function(selector) {
+		return this.view.findAll(selector);
 	},
 
 	destroy: function() {
@@ -425,7 +433,9 @@ module.exports = Binding.extend({
 		for (k in this.nodes) {
 			node = this.nodes[k];
 			if (util.matchSelector(node, selector)) return node;
-			if (queryResult = node.querySelector(selector)) return queryResult;
+			if (_.isFunction(node.querySelector)) {
+				if (queryResult = node.querySelector(selector)) return queryResult;
+			}
 		}
 
 		return null;
@@ -442,8 +452,10 @@ module.exports = Binding.extend({
 				matches.push(node);
 			}
 			
-			queryResult = _.toArray(node.querySelector(selector));
-			if (queryResult.length) matches = matches.concat(queryResult);
+			if (_.isFunction(node.querySelector)) {
+				queryResult = _.toArray(node.querySelector(selector));
+				if (queryResult.length) matches = matches.concat(queryResult);
+			}
 		}
 
 		return matches;
@@ -1151,11 +1163,7 @@ var arrayHandler = _.defaults({
 		util.patchArray(arr);
 		
 		arr.observe(this._arrayObserver = (function(index, nval, oval) {
-			var options = { remove: nval === void 0 },
-				path = index.toString();
-
-			this.set(path, nval, _.extend(options, { notify: false }));
-			this.notify(path, nval, oval, options);
+			this.notify(index.toString(), nval, oval, { remove: nval === void 0 });
 		}).bind(this));
 	},
 
@@ -1366,13 +1374,23 @@ module.exports = util.subclass.call(EventEmitter, {
 	// let's the model and its children know that something changed
 	notify: function(path, nval, oval, options) {
 		var silent, summary, child, childOptions, nval;
+		options = options || {};
 
 		// notify only works on the model at path
 		if (!_.isArray(path) || path.length) {
 			return this.getModel(path).notify([], nval, oval, options);
 		}
 
-		options = options || {};
+		// update the current value if hasn't been already
+		if (nval !== this.value) {
+			if (_.isUndefined(oval)) oval = this.value;
+			this.set([], nval, _.extend(options, { notify: false }));
+		}
+
+		// if the values are identical, why are we here?
+		console.log(nval, oval);
+		if (nval === oval) return;
+
 		childOptions = _.extend({ reset: true }, options, { bubble: false });
 		summary = {
 			model: this,
@@ -1407,9 +1425,10 @@ module.exports = util.subclass.call(EventEmitter, {
 		var handler = model._handler(val);
 		
 		return function(m) {
-			var args = _.toArray(arguments).slice(1);
-			args.unshift(val);
-			return handler[m].apply(model, args);
+			var args = _.toArray(arguments).slice(1),
+				method = handler[m];
+
+			return !_.isFunction(method) ? method : method.apply(model, [ val ].concat(args));
 		}
 	}
 
@@ -1462,7 +1481,12 @@ module.exports = (function() {
         peg$c10 = { type: "class", value: "[^}]", description: "[^}]" },
         peg$c11 = "}}",
         peg$c12 = { type: "literal", value: "}}", description: "\"}}\"" },
-        peg$c13 = function(s) { return options.scope.get(s.join("").trim()); },
+        peg$c13 = function(s) {
+        		var path = s.join("").trim();
+        		// unfortunately, we must listen to changes at all deep paths
+        		options.scope.depend(util.joinPathParts(path, "**"));
+        		return options.scope.get(path);
+        	},
         peg$c14 = "true",
         peg$c15 = { type: "literal", value: "true", description: "\"true\"" },
         peg$c16 = function() { return true; },
@@ -2296,6 +2320,8 @@ module.exports = (function() {
     }
 
 
+    	var util = _dereq_("../util");
+
     	function flatten(arr) {
     		return arr.reduce(function(m, v) {
     			if (Array.isArray(v)) m = m.concat(flatten(v));
@@ -2323,7 +2349,7 @@ module.exports = (function() {
     parse:       parse
   };
 })();
-},{}],12:[function(_dereq_,module,exports){
+},{"../util":20}],12:[function(_dereq_,module,exports){
 var Temple = _dereq_("../temple"),
 	Binding = _dereq_("../binding"),
 	NODE_TYPE = _dereq_("../types"),
@@ -2381,12 +2407,24 @@ module.exports = Temple.extend({
 
 		if (typeof name !== "string" || name === "") throw new Error("Expecting non-empty string for decorator name.");
 		if (typeof fn !== "function") throw new Error("Expecting function for decorator.");
-		
+
 		if (this._decorators == null) this._decorators = {};
 		if (this._decorators[name] == null) this._decorators[name] = [];
-		this._decorators[name].push(fn);
+		if (!~this._decorators[name].indexOf(fn)) this._decorators[name].push(fn);
 		
 		return this;
+	},
+
+	// finds all decorators, locally and in parent
+	findDecorators: function(name) {
+		var d = [];
+		
+		if (this._decorators != null && _.isArray(this._decorators[name]))
+			d = d.concat(this._decorators[name]);
+
+		if (this.parent != null) d = d.concat(this.parent.findDecorators(name));
+		
+		return _.unique(d);
 	},
 
 	// removes a decorator
@@ -2450,17 +2488,28 @@ module.exports = Temple.extend({
 		return this;
 	},
 
+	// looks through parents for partial
+	findPartial: function(name) {
+		var partial = this._partials[name];
+
+		if (partial == null && this.parent != null) {
+			partial = this.parent.findPartial(name);
+		}
+
+		return partial;
+	},
+
 	// returns all the component instances as specified by partial name
 	getComponents: function(name) {
 		return this._components[name] || [];
 	},
 
 	_attrToDecorator: function(attr, binding) {
-		var decorators = this._decorators && this._decorators[attr.name],
+		var decorators = this.findDecorators(attr.name),
 			temple = this,
 			processed, targs, directive;
 		
-		if (Array.isArray(decorators) && decorators.length) {
+		if (decorators.length) {
 			processed = decorators.map(function(fn) {
 				return fn.call(temple, binding.node, attr.children);
 			}).filter(function(d) {
@@ -2547,7 +2596,7 @@ module.exports = Temple.extend({
 
 			case NODE_TYPE.PARTIAL:
 				var name = template.value,
-					partial = this._partials[name],
+					partial = this.findPartial(name),
 					comps = this._components,
 					comp;
 
@@ -2565,6 +2614,8 @@ module.exports = Temple.extend({
 					
 					return new Binding.Component(comp);
 				}
+
+				break;
 
 			default:
 				console.log(template);
@@ -2871,8 +2922,13 @@ module.exports = Binding.extend({
 		this.autorun("render", function(comp) {
 			this.destroyBinding();
 
-			var val = scope.get(this.path),
-				isEmpty = Section.isEmpty(val);
+			var model = (scope.findModel(this.path) || scope).getModel(this.path),
+				val = model.handle("toArray"),
+				isEmpty;
+
+			scope.depend(this.path);
+			if (!_.isArray(val)) val = scope.get(this.path);
+			isEmpty = Section.isEmpty(val);
 			
 			if (isEmpty && this.inverted) {
 				this.binding = new Binding.Context(this.path, this.body(0));
@@ -4322,7 +4378,7 @@ var Temple =
 module.exports = Scope.extend(proto);
 
 // class properties/methods
-Temple.VERSION = "0.2.8";
+Temple.VERSION = "0.2.9-rc1";
 Temple.util = util;
 
 Temple.Deps = _dereq_("./deps");
