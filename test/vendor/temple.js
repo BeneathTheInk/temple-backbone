@@ -206,7 +206,7 @@ module.exports = Binding.extend({
 				this.render(scope);
 			} else if (s.type === "delete") {
 				this.removeRow(extra[0]);
-			} else {
+			} else if (_.contains(scope.keys(parts), extra[0])) {
 				this.updateRow(extra[0], scope);
 				this.refreshRows();
 			}
@@ -1161,13 +1161,18 @@ var arrayHandler = _.defaults({
 
 	construct: function(arr) {
 		util.patchArray(arr);
+		this.set("length", arr.length);
 		
 		arr.observe(this._arrayObserver = (function(index, nval, oval) {
 			this.notify(index.toString(), nval, oval, { remove: nval === void 0 });
+			this.notify("length", arr.length);
 		}).bind(this));
 	},
 
 	set: function(arr, path, val) {
+		// sets on length *should* be ok but we need to notify
+		// of any new or removed values. for now, ignored
+		if (path === "length") return false;
 		arr[path] = val;
 		return true;
 	},
@@ -1388,7 +1393,6 @@ module.exports = util.subclass.call(EventEmitter, {
 		}
 
 		// if the values are identical, why are we here?
-		console.log(nval, oval);
 		if (nval === oval) return;
 
 		childOptions = _.extend({ reset: true }, options, { bubble: false });
@@ -2918,6 +2922,28 @@ module.exports = Binding.extend({
 		return this;
 	},
 
+	dependOnLength: function(scope) {
+		if (!Deps.active) return this;
+		
+		var path, self = this,
+			dep = new Deps.Dependency;
+
+		path = util.joinPathParts(this.path, "length");
+		scope.observe(path, onChange);
+
+		function onChange(s) {
+			if ((self.inverted && s.value > 0) ||
+				(!self.inverted && s.value === 0)) dep.changed();
+		}
+
+		Deps.currentComputation.onInvalidate(function() {
+			scope.stopObserving(path, onChange);
+		});
+
+		dep.depend();
+		return this;
+	},
+
 	render: function(scope) {
 		this.autorun("render", function(comp) {
 			this.destroyBinding();
@@ -2931,10 +2957,13 @@ module.exports = Binding.extend({
 			isEmpty = Section.isEmpty(val);
 			
 			if (isEmpty && this.inverted) {
+				if (_.isArray(val)) this.dependOnLength(scope);
 				this.binding = new Binding.Context(this.path, this.body(0));
 			} else if (!isEmpty && !this.inverted) {
-				if (_.isArray(val)) this.binding = new Binding.Each(this.path, this.body.bind(this));
-				else this.binding = new Binding.Context(this.path, this.body(0));
+				if (_.isArray(val)) {
+					this.dependOnLength(scope);
+					this.binding = new Binding.Each(this.path, this.body.bind(this));
+				} else this.binding = new Binding.Context(this.path, this.body(0));
 			} else {
 				// listen for changes to children to update the binding type
 				scope.depend(util.joinPathParts(this.path, "*" ));

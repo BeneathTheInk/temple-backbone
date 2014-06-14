@@ -78,9 +78,10 @@ var CollectionHandler = {
 	},
 	construct: function(col) {
 		var self = this;
-
+		this.set("length", col.length);
+		
 		col.on( 'add remove reset sort', this._backboneListener = function () {
-			this.each(function(model, index) {
+			this.toArray().forEach(function(model, index) {
 				var oval;
 
 				oval = self.get(index);
@@ -95,6 +96,8 @@ var CollectionHandler = {
 				oval = self.get(model.cid);
 				if (oval !== model) self.notify(model.cid, model, oval);
 			});
+
+			self.notify("length", col.length);
 		});
 	},
 	isLeaf: function() { return false; },
@@ -105,12 +108,16 @@ var CollectionHandler = {
 		return col.at(path) || col.get(path);
 	},
 	set: function(col, path, value) {
-		var index = parseInt(path, 10),
-			options = {};
+		if (path === "length") return false;
 
-		if (!isNaN(index) && ~index) options.at = index;
+		var model = col.at(path) || col.get(path);
 		
-		col.set([ value ], options);
+		if (model == null || value instanceof Backbone.Model) {
+			col.set([ value ], { remove: false });
+		} else {
+			model.set(value);
+		}
+
 		return true;
 	},
 	keys: function(col) {
