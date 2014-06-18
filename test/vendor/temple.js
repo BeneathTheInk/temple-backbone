@@ -2,162 +2,57 @@
  * Temple
  * (c) 2014 Beneath the Ink, Inc.
  * MIT License
- * Version 0.2.9-rc1
+ * Version 0.2.10-alpha
  */
 
 !function(e){if("object"==typeof exports&&"undefined"!=typeof module)module.exports=e();else if("function"==typeof define&&define.amd)define([],e);else{var f;"undefined"!=typeof window?f=window:"undefined"!=typeof global?f=global:"undefined"!=typeof self&&(f=self),f.Temple=e()}}(function(){var define,module,exports;return (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);throw new Error("Cannot find module '"+o+"'")}var f=n[o]={exports:{}};t[o][0].call(f.exports,function(e){var n=t[o][1][e];return s(n?n:e)},f,f.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(_dereq_,module,exports){
 var _ = _dereq_("underscore"),
-	Binding = _dereq_("./index");
-
-module.exports = Binding.extend({
-	constructor: function(view) {
-		if (_.isFunction(view)) view = new view();
-		if (!(view instanceof _dereq_("../temple"))) throw new Error("Expecting subclass or instance of Temple for component.");
-
-		this.view = view;
-		this.previousScope = null;
-
-		Binding.call(this);
-	},
-
-	addChild: function() {
-		throw new Error("Component bindings cannot have children.");
-	},
-
-	clean: function() {
-		if (this.previousScope != null)
-			this.view.removeModel(this.previousScope);
-
-		return this;
-	},
-
-	render: function(scope) {
-		this.clean();
-		this.previousScope = scope;
-		this.view.addModel(scope);
-		this.view.forceUpdate();
-		return this;
-	},
-
-	appendTo: function(parent, before) {
-		this.view.paint(parent, before);
-		return this;
-	},
-
-	toString: function() {
-		return this.view.toString();
-	},
-
-	find: function(selector) {
-		return this.view.find(selector);
-	},
-
-	findAll: function(selector) {
-		return this.view.findAll(selector);
-	},
-
-	destroy: function() {
-		this.clean();
-		this.view.erase();
-		return Binding.prototype.destroy.apply(this, arguments);
-	}
-});
-},{"../temple":18,"./index":6,"underscore":25}],2:[function(_dereq_,module,exports){
-var _ = _dereq_("underscore"),
 	Binding = _dereq_("./index"),
 	util = _dereq_("../util"),
-	Scope = _dereq_("../scope"),
-	Model = _dereq_("../model");
-
-var Context =
-module.exports = Binding.extend({
-	constructor: function(path) {
-		if (!_.isString(path))
-			throw new Error("Expecting string path.");
-
-		this.path = path;
-		this.scope = null;
-
-		Binding.call(this, _.toArray(arguments).slice(1));
-	},
-
-	cleanScope: function() {
-		if (this.scope != null) {
-			this.scope.destroy();
-			delete this.scope;
-		}
-
-		return this;
-	},
-
-	render: function(scope) {
-		this.cleanScope();
-		this.scope = scope.createScopeFromPath(this.path);
-		return Binding.prototype.render.call(this, this.scope);
-	},
-
-	destroy: function() {
-		this.cleanScope();
-		return Binding.prototype.destroy.apply(this, arguments);
-	}
-});
-},{"../model":10,"../scope":17,"../util":20,"./index":6,"underscore":25}],3:[function(_dereq_,module,exports){
-var _ = _dereq_("underscore"),
-	Binding = _dereq_("./index"),
-	util = _dereq_("../util"),
-	Context = _dereq_("./context"),
-	Deps = _dereq_("../deps"),
-	Scope = _dereq_("../scope"),
 	Model = _dereq_("../model");
 
 module.exports = Binding.extend({
-	constructor: function(path, body) {
-		if (!_.isString(path))
-			throw new Error("Expecting string path.");
-
+	constructor: function(body, data) {
 		if (!_.isFunction(body))
 			throw new Error("Expecting function for body.");
 
-		this.path = path;
-		this.body = function() {
-			var args = arguments, ctx = this;
-			return Deps.nonreactive(function() {
-				return body.apply(ctx, args);
-			});
-		}
+		this.body = body;
 		this.rows = {};
 		this.placeholder = document.createComment(_.uniqueId("$"));
 
-		Binding.call(this);
+		Binding.call(this, data);
 	},
 
-	addChild: function() {
-		throw new Error("Each bindings can't have children.");
-	},
-
-	updateRow: function(key, scope) {
-		var row, nscope;
-
-		row = this.rows[key];
-		if (row == null) {
-			row = this.rows[key] = {
-				binding: new Binding(this.body(key))
-			};
+	updateRow: function(key) {
+		if (this.rows[key] == null) {
+			var model = (this.findModel() || this).getModel(key),
+				child = this.body(model, key),
+				row = this.rows[key] = new Binding(model);
+			
+			if (child != null) row.addChild(child);
+			this.addChild(row);
 		}
-
-		this.clearScope(row);
-		nscope = row.scope = scope.createScopeFromPath(util.joinPathParts(this.path, key));
-		nscope.setHidden("$key", key);
-		row.binding.render(nscope);
-
-		return this;
+		
+		return this.rows[key];
 	},
 
 	refreshRows: function() {
-		_.each(this.rows, function(row) {
-			var parent = this.placeholder.parentNode;
-			if (parent != null) row.binding.appendTo(parent, this.placeholder);
-		}, this);
+		var parent = this.placeholder.parentNode;
+		
+		if (parent != null) {
+			var keys = this.keys();
+
+			keys.forEach(function(key) {
+				var row = this.updateRow(key);
+				row.paint(parent, this.placeholder);
+			}, this);
+
+			_.keys(this.rows).filter(function(k) {
+				return !_.contains(keys, k);
+			}).forEach(function(k) {
+				this.removeRow(k);
+			}, this);
+		}
 		
 		return this;
 	},
@@ -166,8 +61,8 @@ module.exports = Binding.extend({
 		var row = this.rows[key];
 		
 		if (row != null) {
-			this.clearScope(row);
-			row.binding.destroy();
+			row.detach();
+			this.removeChild(row);
 			delete this.rows[key];
 		}
 
@@ -180,78 +75,41 @@ module.exports = Binding.extend({
 		return this;
 	},
 
-	clearScope: function(row) {
-		if (row.scope) {
-			row.scope.destroy();
-			delete row.scope;
+	mount: function() {
+		function onChange(s) {
+			if (!s.keypath.length) {
+				this.refreshRows();
+			} else if (s.type === "delete") {
+				this.removeRow(s.keypath[0]);
+			} else if (_.contains(this.keys(), s.keypath[0])) {
+				var hasKey = this.rows[s.keypath[0]] != null;
+				this.updateRow(s.keypath[0]);
+				if (!hasKey) this.refreshRows();
+			}
 		}
 
-		return this;
-	},
+		this.observe("", onChange);
+		this.observe("*", onChange);
 
-	dependOn: function(scope) {
-		if (this._stopDepending) this._stopDepending();
-		
-		var parts, onChange;
-		parts = util.splitPath(this.path);
+		this.once("detach", function() {
+			this.stopObserving(onChange);
+		});
 
-		onChange = (function(s) {
-			var keypath = util.splitPath(s.path),
-				extra;
-
-			if (!util.arrayStartsWith(keypath, parts)) return;
-			extra = keypath.slice(parts.length);
-			
-			if (!extra.length) {
-				this.render(scope);
-			} else if (s.type === "delete") {
-				this.removeRow(extra[0]);
-			} else if (_.contains(scope.keys(parts), extra[0])) {
-				this.updateRow(extra[0], scope);
-				this.refreshRows();
-			}
-		}).bind(this);
-
-		scope.observe(this.path, onChange);
-		scope.observe(util.joinPathParts(this.path, "*"), onChange);
-
-		this._stopDepending = (function() {
-			scope.stopObserving(onChange);
-			delete this._stopDepending;
-		}).bind(this);
-
-		return this;
-	},
-
-	render: function(scope) {
-		var model = (scope.findModel(this.path) || scope).getModel(this.path),
-			keys = model.keys(),
-			toRemove = [];
-
-		this.execDirectives(scope);
-		this.dependOn(scope);
-
-		keys.forEach(function(k) {
-			this.updateRow(k, scope);
-		}, this);
-
-		// remove all rows except for keys
-		_.keys(this.rows).filter(function(k) {
-			return !_.contains(keys, k);
-		}).forEach(function(k) {
-			this.removeRow(k);
-		}, this);
-
-		// update all positions
-		this.refreshRows();
-
-		return this;
+		return Binding.prototype.mount.apply(this, arguments);
 	},
 
 	appendTo: function(parent, before) {
 		parent.insertBefore(this.placeholder, before);
 		this.refreshRows();
+		this.trigger("append", parent, before);
 		return this;
+	},
+
+	detach: function() {
+		this.removeAllRows();
+		var parent = this.placeholder.parentNode;
+		if (parent != null) parent.removeChild(this.placeholder);
+		return Binding.prototype.detach.apply(this, arguments);
 	},
 
 	find: function(selector) {
@@ -272,19 +130,10 @@ module.exports = Binding.extend({
 		});
 
 		return els;
-	},
-
-	destroy: function() {
-		if (this._stopDepending) this._stopDepending();
-		
-		this.removeAllRows();
-		var parent = this.placeholder.parentNode;
-		if (parent != null) parent.removeChild(this.placeholder);
-
-		return Binding.prototype.destroy.apply(this, arguments);
 	}
+
 });
-},{"../deps":8,"../model":10,"../scope":17,"../util":20,"./context":2,"./index":6,"underscore":25}],4:[function(_dereq_,module,exports){
+},{"../model":10,"../util":19,"./index":4,"underscore":23}],2:[function(_dereq_,module,exports){
 var _ = _dereq_("underscore"),
 	util = _dereq_("../util"),
 	Binding = _dereq_("./index");
@@ -298,17 +147,34 @@ module.exports = Binding.extend({
 		this.attributes = {};
 		this.node = document.createElement(tagname);
 		
-		// when children are added, append to element
-		this.on("child:add", function(child) {
-			child.appendTo(this.node);
+		Binding.apply(this, _.toArray(arguments).slice(1));
+	},
+
+	mount: function() {
+		// cleverly wrapped so we can kill all of them at the same time
+		this.autorun("attributes", function() {
+			_.each(this.attributes, function(value, name) {
+				this.autorun(function(comp) {
+					var val = value.call(this);
+					val = val != null ? val.toString() : "";
+					this.node.setAttribute(name, val);
+				});
+			}, this);
 		});
 
-		Binding.call(this, _.toArray(arguments).slice(1));
+		return Binding.prototype.mount.apply(this, arguments);
 	},
 
 	appendTo: function(parent, before) {
 		parent.insertBefore(this.node, before);
-		return this;
+		return Binding.prototype.appendTo.call(this, this.node);
+	},
+
+	detach: function() {
+		this.stopComputation("attributes");
+		var parent = this.node.parentNode;
+		if (parent != null) parent.removeChild(this.node);
+		return Binding.prototype.detach.apply(this, arguments);
 	},
 
 	toString: function() {
@@ -341,29 +207,18 @@ module.exports = Binding.extend({
 		if (!_.isFunction(value)) throw new Error("Expecting string or function for attribute value");
 		if (!_.isString(name)) throw new Error("Expecting string for attribute name");
 
-		this.directive(function(scope) {
-			var val = value.call(this, scope);
-			val = val != null ? val.toString() : "";
-			this.node.setAttribute(name, val);
-		});
+		this.attributes[name] = value;
 
 		return this;
-	},
-
-	destroy: function() {
-		var parent = this.node.parentNode;
-		if (parent != null) parent.removeChild(this.node);
-
-		return Binding.prototype.destroy.apply(this, arguments);
 	}
 });
-},{"../util":20,"./index":6,"underscore":25}],5:[function(_dereq_,module,exports){
+},{"../util":19,"./index":4,"underscore":23}],3:[function(_dereq_,module,exports){
 var _ = _dereq_("underscore"),
 	util = _dereq_("../util"),
 	Binding = _dereq_("./index");
 
 module.exports = Binding.extend({
-	constructor: function(value) {
+	constructor: function(value, data) {
 		if (_.isString(value)) {
 			var str = value;
 			value = function() { return str; }
@@ -376,12 +231,12 @@ module.exports = Binding.extend({
 		this.value = "";
 		this.nodes = [];
 		this.placeholder = document.createComment(_.uniqueId("$"));
-		
-		Binding.call(this);
+
+		Binding.call(this, data);
 	},
 
-	addChild: function() {
-		throw new Error("Triple bindings can't have children.");
+	appendChild: function() {
+		throw new Error("HTML bindings can't have children.");
 	},
 
 	cleanNodes: function() {
@@ -399,32 +254,50 @@ module.exports = Binding.extend({
 		if (parent != null) this.nodes.forEach(function(node) {
 			parent.insertBefore(node, this.placeholder);
 		}, this);
-
-		return this;
 	},
 
-	render: function(scope) {
-		this.autorun("render", function(comp) {
-			var val, cont;
+	render: function() {
+		var val, cont;
 
-			val = this.compute(scope);
-			val = val != null ? val.toString() : "";
+		// compute html value
+		val = this.compute();
+		val = val != null ? val.toString() : "";
+		
+		// dirty check the value
+		if (val !== this.value) {
 			this.value = val;
 			
+			// remove existing html nodes
 			this.cleanNodes();
+			
+			// convert html into DOM nodes
 			div = document.createElement("div");
 			div.innerHTML = val;
 			this.nodes = _.toArray(div.childNodes);
-			this.refreshNodes();
-		});
+		}
 
-		return Binding.prototype.render.apply(this, arguments);
+		// refresh node positions in DOM
+		this.refreshNodes();
+	},
+
+	mount: function() {
+		this.autorun("render", this.render);
+		return Binding.prototype.mount.apply(this, arguments);
 	},
 
 	appendTo: function(parent, before) {
 		parent.insertBefore(this.placeholder, before);
 		this.refreshNodes();
-		return this;
+		return Binding.prototype.appendTo.apply(this, arguments);
+	},
+
+	detach: function() {
+		this.stopComputation("render");
+		this.cleanNodes();
+		delete this.value;
+		var parent = this.placeholder.parentNode;
+		if (parent != null) parent.removeChild(this.placeholder);
+		return Binding.prototype.detach.apply(this, arguments);
 	},
 
 	find: function(selector) {
@@ -463,165 +336,67 @@ module.exports = Binding.extend({
 
 	toString: function() {
 		return this.value;
-	},
-
-	destroy: function() {
-		this.cleanNodes();
-		var parent = this.placeholder.parentNode;
-		if (parent != null) parent.removeChild(this.placeholder);
-
-		return Binding.prototype.destroy.apply(this, arguments);
 	}
 });
-},{"../util":20,"./index":6,"underscore":25}],6:[function(_dereq_,module,exports){
+},{"../util":19,"./index":4,"underscore":23}],4:[function(_dereq_,module,exports){
 var _ = _dereq_("underscore"),
 	util = _dereq_("../util"),
 	Deps = _dereq_("../deps"),
-	EventEmitter = _dereq_("events").EventEmitter;
+	Scope = _dereq_("../scope");
 
-var Binding = module.exports =
-util.subclass.call(EventEmitter, {
+var Binding =
+module.exports = Scope.extend({
+	
 	constructor: function() {
-		this.children = [];
-		this._comps = {};
-		this._directives = {};
+		 // parse args
+        var data, args = _.toArray(arguments).slice(0);
+        if (!(args[0] instanceof Binding)) data = args.shift();
+         
+        // exec scope constructor
+        Scope.call(this, data);
+ 
+        // append children
+        if (args.length) this.addChild(args);
 
-		var children = _.toArray(arguments);
-		if (children.length) this.addChild(children);
+		this.initialize();
 	},
 
-	addChild: function(child) {
-		_.flatten(_.toArray(arguments)).forEach(function(child) {
-			if (!(child instanceof Binding))
-				throw new Error("Can only add instances of Binding as children.");
+	initialize: function(){},
 
-			if (child.parent != null) {
-				if (child.parent !== this) throw new Error("Child binding already has a parent.");
-				return this;
-			}
-
-			var self, removeChild, destroyChild;
-
-			this.children.push(child);
-			self = child.parent = this;
-
-			child.on("destroy", child._parentDestroyEvent = function() {
-				self.removeChild(child);
-			});
-
-			this.emit("child:add", child);
-		}, this);
-
+	mount: function() {
+		this.children.forEach(function(child) { child.mount(); });
+		this.trigger("mount");
+		this._mounted = true;
 		return this;
 	},
 
-	removeChild: function(child) {
-		_.flatten(_.toArray(arguments)).forEach(function(child) {
-			var index = this.children.indexOf(child);
-			if (~index) {
-				this.children.splice(index, 1);
-				child.removeListener("destroy", child._parentDestroyEvent);
-				this.emit("child:remove", child);
-			}
-		}, this);
-
-		return this;
-	},
-
-	// runs fn when deps change
-	autorun: function(name, fn) {
-		if (_.isFunction(name) && fn == null) {
-			fn = name;
-			name = _.uniqueId("f");
-		}
-
-		if (!_.isString(name)) throw new Error("Expecting string for computation identifier.");
-		if (!_.isFunction(fn)) throw new Error("Expecting function for computation.");
-
-		this.stopComputation(name);
-		var self = this;
-
-		return this._comps[name] = Deps.autorun(function(comp) {
-			fn.call(self, comp);
-			
-			comp.onInvalidate(function() {
-				if (comp.stopped && self._comps[name] === comp) {
-					delete self._comps[name];
-				}
-			});
-		});
-	},
-
-	stopComputation: function(name) {
-		if (name == null) {
-			_.each(this._comps, function(c) {
-				c.stop();
-			});
-
-			this._comps = {};
-		}
-
-		else if (this._comps[name] != null) {
-			this._comps[name].stop();
-		}
-
-		return this;
-	},
-
-	directive: function(fn) {
-		if (typeof fn !== "function") throw new Error("Expecting function for computation.");
-		this._directives[_.uniqueId("d")] = fn;
-		return this;
-	},
-
-	killDirective: function(fn) {
-		if (fn == null) {
-			_.each(this._directives, function(fn) {
-				this.killDirective(fn);
-			}, this);
-
-			this._directives = {};
-		}
-
-		else {
-			_.reduce(this._directives, function(m, d, id) {
-				if (d === fn) m.push(id);
-				return m;
-			}, []).forEach(function(id) {
-				this.stopComputation(id);
-				delete this._directives[id];
-			}, this);
-		}
-
-		return this;
-	},
-
-	execDirectives: function(scope) {
-		_.each(this._directives, function(fn, id) {
-			this.autorun(id, function(comp) {
-				fn.call(this, scope, comp);
-			});
-		}, this);
-
-		return this;
-	},
-
-	render: function(scope) {
-		// first directives
-		this.execDirectives(scope);
-
-		// then children
+	appendTo: function(parent, beforeNode) {
 		this.children.slice(0).forEach(function(child) {
-			child.render(scope);
+			child.appendTo(parent, beforeNode);
 		});
 
+		this.trigger("append", parent, beforeNode);
 		return this;
 	},
 
-	appendTo: function(parent, before) {
+	detach: function() {
 		this.children.slice(0).forEach(function(child) {
-			child.appendTo(parent, before);
+			child.detach();
 		});
+
+		delete this._mounted;
+		this.trigger("detach");
+		return this;
+	},
+
+	paint: function(parent, beforeNode) {
+		if (_.isString(parent)) parent = document.querySelector(parent);
+		if (_.isString(beforeNode)) beforeNode = parent.querySelector(beforeNode);
+		if (parent == null) parent = document.createDocumentFragment();
+		
+		if (this._mounted) this.detach();
+		this.mount();
+		this.appendTo(parent, beforeNode);
 
 		return this;
 	},
@@ -647,37 +422,88 @@ util.subclass.call(EventEmitter, {
 	},
 
 	toString: function() {
-		return this.children.slice(0).map(function(child) {
+		return this.children.map(function(child) {
 			return child.toString();
 		}).join("");
 	},
 
-	destroy: function() {
-		this.children.slice(0).forEach(function(child) {
-			child.destroy();
-		});
+	toHTML: function() { return this.toString(); }
 
-		this.stopComputation();
-		this.emit("destroy");
-		return this;
-	}
-}, {
-	extend: util.subclass
 });
 
-// Load the real bindings
+Binding.isBinding = function(obj) {
+	return obj instanceof Binding;
+}
+
+// load the real bindings
 Binding.Text		= _dereq_("./text");
 Binding.Element		= _dereq_("./element");
 Binding.HTML		= _dereq_("./html");
-Binding.Context		= _dereq_("./context");
 Binding.Each		= _dereq_("./each");
-Binding.Component	= _dereq_("./component");
-},{"../deps":8,"../util":20,"./component":1,"./context":2,"./each":3,"./element":4,"./html":5,"./text":7,"events":21,"underscore":25}],7:[function(_dereq_,module,exports){
+Binding.React		= _dereq_("./react");
+},{"../deps":7,"../scope":17,"../util":19,"./each":1,"./element":2,"./html":3,"./react":5,"./text":6,"underscore":23}],5:[function(_dereq_,module,exports){
 var _ = _dereq_("underscore"),
+	Binding = _dereq_("./index"),
+	util = _dereq_("../util");
+
+module.exports = Binding.extend({
+	constructor: function(render, data) {
+		this.placeholder = document.createComment(_.uniqueId("$"));
+		
+		if (_.isFunction(render)) this.render = render;
+		else data = render;
+
+		// when children are added, append to placeholder
+		this.on("child:add", function(child) {
+			if (this.placeholder.parentNode != null) {
+				child.paint(this.placeholder.parentNode, this.placeholder);
+			}
+		});
+ 
+		this.on("child:remove", function(child) {
+			child.detach();
+		});
+
+		Binding.call(this, data);
+	},
+
+	mount: function() {
+		this.autorun("render", function(comp) {
+			var bindings = this.render.call(this),
+				self = this;
+
+			// append the new body
+			if (bindings != null) this.addChild(bindings);
+			
+			// remove all bindings when invalidated
+			comp.onInvalidate(function() {
+				self.removeChild(bindings);
+			});
+		});
+
+		return Binding.prototype.mount.apply(this, arguments);
+	},
+
+	appendTo: function(parent, before) {
+		parent.insertBefore(this.placeholder, before);
+		return Binding.prototype.appendTo.call(this, parent, this.placeholder);
+	},
+
+	detach: function() {
+		this.stopComputation("render");
+		var parent = this.placeholder.parentNode;
+		if (parent != null) parent.removeChild(this.placeholder);
+		return Binding.prototype.detach.apply(this, arguments);
+	}
+
+});
+},{"../util":19,"./index":4,"underscore":23}],6:[function(_dereq_,module,exports){
+var _ = _dereq_("underscore"),
+	util = _dereq_("../util"),
 	Binding = _dereq_("./index");
 
 module.exports = Binding.extend({
-	constructor: function(value) {
+	constructor: function(value, data) {
 		if (_.isString(value)) {
 			var str = value;
 			value = function() { return str; }
@@ -690,21 +516,21 @@ module.exports = Binding.extend({
 		this.value = "";
 		this.node = document.createTextNode("");
 
-		Binding.call(this);
+		Binding.call(this, data);
 	},
 
 	addChild: function() {
 		throw new Error("Text bindings can't have children.");
 	},
 
-	render: function(scope) {
-		this.autorun("render", function(comp) {
-			var val = this.compute(scope);
+	mount: function() {
+		this.autorun("render", function() {
+			var val = this.compute();
 			val = val != null ? val.toString() : "";
 			this.node.nodeValue = this.value = val;
 		});
 
-		return Binding.prototype.render.apply(this, arguments);
+		return Binding.prototype.mount.apply(this, arguments);
 	},
 
 	appendTo: function(parent, before) {
@@ -712,21 +538,22 @@ module.exports = Binding.extend({
 		return Binding.prototype.appendTo.apply(this, arguments);
 	},
 
+	detach: function() {
+		this.stopComputation("render");
+		delete this.value;
+		var parent = this.node.parentNode;
+		if (parent != null) parent.removeChild(this.node);
+		return Binding.prototype.detach.apply(this, arguments);
+	},
+
 	find: function(selector) { return null; },
 	findAll: function() { return []; },
 
 	toString: function() {
 		return this.value;
-	},
-
-	destroy: function() {
-		var parent = this.node.parentNode;
-		if (parent != null) parent.removeChild(this.node);
-
-		return Binding.prototype.destroy.apply(this, arguments);
 	}
 });
-},{"./index":6,"underscore":25}],8:[function(_dereq_,module,exports){
+},{"../util":19,"./index":4,"underscore":23}],7:[function(_dereq_,module,exports){
 //////////////////////////////////////////////////
 // Package docs at http://docs.meteor.com/#deps //
 //////////////////////////////////////////////////
@@ -1110,7 +937,175 @@ _assign(Deps, {
     requireFlush();
   }
 });
-},{}],9:[function(_dereq_,module,exports){
+},{}],8:[function(_dereq_,module,exports){
+var _ = _dereq_("underscore");
+
+// Backbone.Events
+// ---------------
+
+// A module that can be mixed in to *any object* in order to provide it with
+// custom events. You may bind with `on` or remove with `off` callback
+// functions to an event; `trigger`-ing an event fires all callbacks in
+// succession.
+//
+//     var object = {};
+//     _.extend(object, Backbone.Events);
+//     object.on('expand', function(){ alert('expanded'); });
+//     object.trigger('expand');
+//
+var Events = module.exports = {
+
+  // Bind an event to a `callback` function. Passing `"all"` will bind
+  // the callback to all events fired.
+  on: function(name, callback, context) {
+    if (!eventsApi(this, 'on', name, [callback, context]) || !callback) return this;
+    this._events || (this._events = {});
+    var events = this._events[name] || (this._events[name] = []);
+    events.push({callback: callback, context: context, ctx: context || this});
+    return this;
+  },
+
+  // Bind an event to only be triggered a single time. After the first time
+  // the callback is invoked, it will be removed.
+  once: function(name, callback, context) {
+    if (!eventsApi(this, 'once', name, [callback, context]) || !callback) return this;
+    var self = this;
+    var once = _.once(function() {
+      self.off(name, once);
+      callback.apply(this, arguments);
+    });
+    once._callback = callback;
+    return this.on(name, once, context);
+  },
+
+  // Remove one or many callbacks. If `context` is null, removes all
+  // callbacks with that function. If `callback` is null, removes all
+  // callbacks for the event. If `name` is null, removes all bound
+  // callbacks for all events.
+  off: function(name, callback, context) {
+    var retain, ev, events, names, i, l, j, k;
+    if (!this._events || !eventsApi(this, 'off', name, [callback, context])) return this;
+    if (!name && !callback && !context) {
+      this._events = void 0;
+      return this;
+    }
+    names = name ? [name] : _.keys(this._events);
+    for (i = 0, l = names.length; i < l; i++) {
+      name = names[i];
+      if (events = this._events[name]) {
+        this._events[name] = retain = [];
+        if (callback || context) {
+          for (j = 0, k = events.length; j < k; j++) {
+            ev = events[j];
+            if ((callback && callback !== ev.callback && callback !== ev.callback._callback) ||
+                (context && context !== ev.context)) {
+              retain.push(ev);
+            }
+          }
+        }
+        if (!retain.length) delete this._events[name];
+      }
+    }
+
+    return this;
+  },
+
+  // Trigger one or many events, firing all bound callbacks. Callbacks are
+  // passed the same arguments as `trigger` is, apart from the event name
+  // (unless you're listening on `"all"`, which will cause your callback to
+  // receive the true name of the event as the first argument).
+  trigger: function(name) {
+    if (!this._events) return this;
+    var args = Array.prototype.slice.call(arguments, 1);
+    if (!eventsApi(this, 'trigger', name, args)) return this;
+    var events = this._events[name];
+    var allEvents = this._events.all;
+    if (events) triggerEvents(events, args);
+    if (allEvents) triggerEvents(allEvents, arguments);
+    return this;
+  },
+
+  // Tell this object to stop listening to either specific events ... or
+  // to every object it's currently listening to.
+  stopListening: function(obj, name, callback) {
+    var listeningTo = this._listeningTo;
+    if (!listeningTo) return this;
+    var remove = !name && !callback;
+    if (!callback && typeof name === 'object') callback = this;
+    if (obj) (listeningTo = {})[obj._listenId] = obj;
+    for (var id in listeningTo) {
+      obj = listeningTo[id];
+      obj.off(name, callback, this);
+      if (remove || _.isEmpty(obj._events)) delete this._listeningTo[id];
+    }
+    return this;
+  }
+
+};
+
+// Regular expression used to split event strings.
+var eventSplitter = /\s+/;
+
+// Implement fancy features of the Events API such as multiple event
+// names `"change blur"` and jQuery-style event maps `{change: action}`
+// in terms of the existing API.
+var eventsApi = function(obj, action, name, rest) {
+  if (!name) return true;
+
+  // Handle event maps.
+  if (typeof name === 'object') {
+    for (var key in name) {
+      obj[action].apply(obj, [key, name[key]].concat(rest));
+    }
+    return false;
+  }
+
+  // Handle space separated event names.
+  if (eventSplitter.test(name)) {
+    var names = name.split(eventSplitter);
+    for (var i = 0, l = names.length; i < l; i++) {
+      obj[action].apply(obj, [names[i]].concat(rest));
+    }
+    return false;
+  }
+
+  return true;
+};
+
+// A difficult-to-believe, but optimized internal dispatch function for
+// triggering events. Tries to keep the usual cases speedy (most internal
+// Backbone events have 3 arguments).
+var triggerEvents = function(events, args) {
+  var ev, i = -1, l = events.length, a1 = args[0], a2 = args[1], a3 = args[2];
+  switch (args.length) {
+    case 0: while (++i < l) (ev = events[i]).callback.call(ev.ctx); return;
+    case 1: while (++i < l) (ev = events[i]).callback.call(ev.ctx, a1); return;
+    case 2: while (++i < l) (ev = events[i]).callback.call(ev.ctx, a1, a2); return;
+    case 3: while (++i < l) (ev = events[i]).callback.call(ev.ctx, a1, a2, a3); return;
+    default: while (++i < l) (ev = events[i]).callback.apply(ev.ctx, args); return;
+  }
+};
+
+var listenMethods = {listenTo: 'on', listenToOnce: 'once'};
+
+// Inversion-of-control versions of `on` and `once`. Tell *this* object to
+// listen to an event in another object ... keeping track of what it's
+// listening to.
+_.each(listenMethods, function(implementation, method) {
+  Events[method] = function(obj, name, callback) {
+    var listeningTo = this._listeningTo || (this._listeningTo = {});
+    var id = obj._listenId || (obj._listenId = _.uniqueId('l'));
+    listeningTo[id] = obj;
+    if (!callback && typeof name === 'object') callback = this;
+    obj[implementation](name, callback, this);
+    return this;
+  };
+});
+
+// Aliases for backwards compatibility.
+Events.bind   = Events.on;
+Events.unbind = Events.off;
+},{"underscore":23}],9:[function(_dereq_,module,exports){
 var Temple = _dereq_("./temple"),
 	_ = _dereq_("underscore"),
 	util = _dereq_("./util");
@@ -1199,25 +1194,27 @@ var arrayHandler = _.defaults({
 
 module.exports = [ arrayHandler, objectHandler ];
 module.exports.default = defaultHandler;
-},{"./temple":18,"./util":20,"underscore":25}],10:[function(_dereq_,module,exports){
+},{"./temple":18,"./util":19,"underscore":23}],10:[function(_dereq_,module,exports){
 var _ = _dereq_("underscore"),
 	util = _dereq_("./util"),
-	EventEmitter = _dereq_("events").EventEmitter,
+	Events = _dereq_("./events"),
 	handlers = _dereq_("./handlers");
 
 var Model =
-module.exports = util.subclass.call(EventEmitter, {
+module.exports = function Model(data) {
+	this._handlers = [];
+	this.children = {};
+	this.set([], data);
+}
 
-	constructor: function(value) {
-		EventEmitter.call(this);
-		this.setMaxListeners(0);
-		
-		this._handlers = [];
-		this.children = {};
-		
-		this.set([], value);
-	},
+Model.extend = util.subclass;
+Model._defaultHandlers = handlers;
 
+Model.isModel = function(obj) {
+	return obj instanceof Model;
+}
+
+_.extend(Model.prototype, Events, {
 	// returns the correct handler based on a value
 	_handler: function(val) {
 		var handler;
@@ -1242,6 +1239,19 @@ module.exports = util.subclass.call(EventEmitter, {
 		return handler != null ? handler : handlers.default;
 	},
 
+	// creates a focused handle function from value
+	createHandle: function(val) {
+		var handler = this._handler(val),
+			self = this;
+		
+		return function(m) {
+			var args = _.toArray(arguments).slice(1),
+				method = handler[m];
+
+			return !_.isFunction(method) ? method : method.apply(self, [ val ].concat(args));
+		}
+	},
+
 	// adds a handler to use on any future model values
 	// secondary usage is to execute a handler method with arguments
 	handle: function(handler) {
@@ -1256,7 +1266,7 @@ module.exports = util.subclass.call(EventEmitter, {
 
 			// create if doesn't exist
 			if (handler == "construct" || !_.isFunction(handle) || handle.value !== this.value) {
-				handle = Model.createHandle(this, this.value);
+				handle = this.createHandle(this.value);
 				handle.value = this.value;
 				this.__handle__ = handle;
 			}
@@ -1301,9 +1311,9 @@ module.exports = util.subclass.call(EventEmitter, {
 				}
 			}
 		
-			parent.emit("change", _.defaults({
+			parent.trigger("change", _.defaults({
 				keypath: [ path ].concat(summary.keypath)
-			}, summary), options);
+			}, summary), options, parent);
 		}
 	},
 
@@ -1410,34 +1420,12 @@ module.exports = util.subclass.call(EventEmitter, {
 		}, this);
 
 		// announce the change
-		this.emit("change", summary, options);
+		this.trigger("change", summary, options, this);
 
 		return summary;
-	},
-
-}, {
-
-	extend: util.subclass,
-	_defaultHandlers: _dereq_("./handlers"),
-
-	isModel: function(obj) {
-		return obj instanceof Model;
-	},
-
-	// creates a focused handle function from model and value
-	createHandle: function(model, val) {
-		var handler = model._handler(val);
-		
-		return function(m) {
-			var args = _.toArray(arguments).slice(1),
-				method = handler[m];
-
-			return !_.isFunction(method) ? method : method.apply(model, [ val ].concat(args));
-		}
 	}
-
 });
-},{"./handlers":9,"./util":20,"events":21,"underscore":25}],11:[function(_dereq_,module,exports){
+},{"./events":8,"./handlers":9,"./util":19,"underscore":23}],11:[function(_dereq_,module,exports){
 module.exports = (function() {
   /*
    * Generated by PEG.js 0.8.0.
@@ -2353,10 +2341,9 @@ module.exports = (function() {
     parse:       parse
   };
 })();
-},{"../util":20}],12:[function(_dereq_,module,exports){
+},{"../util":19}],12:[function(_dereq_,module,exports){
 var Temple = _dereq_("../temple"),
-	Binding = _dereq_("../binding"),
-	NODE_TYPE = _dereq_("../types"),
+	NODE_TYPE = _dereq_("./types"),
 	_ = _dereq_("underscore"),
 	parse = _dereq_("./parse"),
 	util = _dereq_("../util"),
@@ -2388,7 +2375,7 @@ module.exports = Temple.extend({
 		if (this._template == null)
 			throw new Error("Expected a template to be set before rendering.");
 
-		return this._processTemplate(this._template);
+		return this.convertTemplate(this._template);
 	},
 
 	// parses and sets the root template
@@ -2421,12 +2408,15 @@ module.exports = Temple.extend({
 
 	// finds all decorators, locally and in parent
 	findDecorators: function(name) {
-		var d = [];
-		
-		if (this._decorators != null && _.isArray(this._decorators[name]))
-			d = d.concat(this._decorators[name]);
+		var d = [],
+			c = this;
 
-		if (this.parent != null) d = d.concat(this.parent.findDecorators(name));
+		while (c != null) {
+			if (c._decorators != null && _.isArray(c._decorators[name]))
+				d = d.concat(c._decorators[name]);
+
+			c = c.parent;
+		}
 		
 		return _.unique(d);
 	},
@@ -2486,21 +2476,20 @@ module.exports = Temple.extend({
 			this._partials[name] = partial;
 		}
 
-		this.emit("partial", name, partial);
-		this.emit("partial:" + name, partial);
+		this.trigger("partial", name, partial);
+		this.trigger("partial:" + name, partial);
 		
 		return this;
 	},
 
 	// looks through parents for partial
 	findPartial: function(name) {
-		var partial = this._partials[name];
+		var c = this;
 
-		if (partial == null && this.parent != null) {
-			partial = this.parent.findPartial(name);
+		while (c != null) {
+			if (c._partials != null && c._partials[name] != null) return c._partials[name];
+			c = c.parent;
 		}
-
-		return partial;
 	},
 
 	// returns all the component instances as specified by partial name
@@ -2508,7 +2497,90 @@ module.exports = Temple.extend({
 		return this._components[name] || [];
 	},
 
-	_attrToDecorator: function(attr, binding) {
+	convertTemplate: function(template, context) {
+		if (context == null) context = this;
+		var temple = this;
+
+		function convert(t, c) {
+			return temple.convertTemplate(t || template.children, c || context);
+		}
+
+		if (_.isArray(template)) return template.map(function(t) {
+			return convert(t);
+		}, this).filter(function(b) { return b != null; });
+
+		// cannot be reactive or things get infinite fast
+		return Temple.Deps.nonreactive(function() {
+			switch(template.type) {
+				case NODE_TYPE.ROOT:
+					var b = new Temple.Binding();
+					b.addChild(convert());
+					return b;
+
+				case NODE_TYPE.ELEMENT:
+					var binding = new Temple.Element(template.name);
+					binding.addChild(convert());
+
+					template.attributes.forEach(function(attr) {
+						temple._attrToDecorator(attr, binding, context);
+					});
+
+					return binding;
+
+				case NODE_TYPE.TEXT:
+					return new Temple.Text(template.value);
+
+				case NODE_TYPE.INTERPOLATOR:
+				case NODE_TYPE.TRIPLE:
+					var model = getModelByPath(template.value, context),
+						klass = template.type === NODE_TYPE.TRIPLE ? "HTML" : "Text";
+
+					return new Temple[klass](function() {
+						var m, val;
+						val = (m = model.call(this)) != null ? m.get() : null;
+						if (_.isFunction(val)) val = val.call(this);
+						return val;
+					});
+
+				case NODE_TYPE.INVERTED:
+				case NODE_TYPE.SECTION:
+					var model = getModelByPath(template.value, context),
+						inverted = template.type === NODE_TYPE.INVERTED,
+						body = function(model, key) {
+							return new Temple.Binding({ $key: key }, convert(null, this));
+						};
+
+					return new Section(model, body, inverted);
+
+				case NODE_TYPE.PARTIAL:
+					var name = template.value,
+						partial = temple.findPartial(name),
+						comps = temple._components,
+						comp;
+
+					if (partial != null) {
+						comp = new partial;
+						
+						if (comps[name] == null) comps[name] = [];
+						comps[name].push(comp);
+
+						comp.once("parent:remove", function() {
+							var index = comps[name].indexOf(comp);
+							if (~index) comps[name].slice(index, 1);
+						});
+						
+						return comp;
+					}
+
+				default:
+					console.log(template);
+			}
+		});
+	},
+
+	convertStringTemplate: convertStringTemplate,
+
+	_attrToDecorator: function(attr, binding, context) {
 		var decorators = this.findDecorators(attr.name),
 			temple = this,
 			processed, targs, directive;
@@ -2527,148 +2599,41 @@ module.exports = Temple.extend({
 				}
 			});
 
-			directive = function(scope) {
-				var raw, args = [];
+			binding.on("mount", function() {
+				this.autorun("d-" + attr.name, function() {
+					var raw, args = [];
 
-				if (targs != null) {
-					raw = temple._processStringTemplate(targs, scope);
-					args = ArgParser.parse(raw, { scope: scope });
-				}
-
-				processed.forEach(function(d) {
-					if (typeof d.update === "function") {
-						d.update.apply(scope, d.parse !== false ? args : []);
+					if (targs != null) {
+						raw = temple.convertStringTemplate(targs);
+						args = ArgParser.parse(raw, { scope: this });
 					}
-				}, this);
-			}
 
-			binding.directive(directive);
+					processed.forEach(function(d) {
+						if (typeof d.update === "function") {
+							d.update.apply(this, d.parse !== false ? args : []);
+						}
+					}, this);
+				});
+			});
 
-			binding.once("destroy", function() {
+			binding.on("detach", function() {
+				this.stopComputation("d-" + attr.name);
+
 				processed.forEach(function(d) {
 					if (typeof d.destroy === "function") d.destroy.call(temple);
 				});
-
-				binding.killDirective(directive);
 			});
 		}
 
 		else {
-			binding.attr(attr.name, function(scope) {
-				return temple._processStringTemplate(attr.children, scope);
+			binding.attr(attr.name, function() {
+				return convertStringTemplate.call(binding, attr.children, context);
 			});
 		}
 	},
-
-	_processTemplate: function(template) {
-		if (_.isArray(template)) return template.map(function(t) {
-			return this._processTemplate(t);
-		}, this).filter(function(b) { return b != null; });
-
-		var temple = this;
-
-		switch(template.type) {
-			case NODE_TYPE.ROOT:
-				return new Binding(this._processTemplate(template.children));
-
-			case NODE_TYPE.ELEMENT:
-				var binding = new Binding.Element(template.name, this._processTemplate(template.children));
-
-				template.attributes.forEach(function(attr) {
-					this._attrToDecorator(attr, binding);
-				}, this);
-
-				return binding;
-
-			case NODE_TYPE.TEXT:
-				return new Binding.Text(template.value);
-
-			case NODE_TYPE.INTERPOLATOR:
-				return new Binding.Text(function(scope) {
-					return scope.get(template.value);
-				});
-
-			case NODE_TYPE.TRIPLE:
-				return new Binding.HTML(function(scope) {
-					return scope.get(template.value);
-				});
-
-			case NODE_TYPE.INVERTED:
-			case NODE_TYPE.SECTION:
-				var body = function() { return temple._processTemplate(template.children); }
-				return new Section(template.value, body, template.type === NODE_TYPE.INVERTED);
-
-			case NODE_TYPE.PARTIAL:
-				var name = template.value,
-					partial = this.findPartial(name),
-					comps = this._components,
-					comp;
-
-				if (partial != null) {
-					comp = new partial;
-					comp.parent = this;
-					
-					if (comps[name] == null) comps[name] = [];
-					comps[name].push(comp);
-
-					comp.once("destroy", function() {
-						var index = comps[name].indexOf(comp);
-						if (~index) comps[name].splice(index, 1);
-					});
-					
-					return new Binding.Component(comp);
-				}
-
-				break;
-
-			default:
-				console.log(template);
-		}
-	},
-
-	_processStringTemplate: function(template, scope) {
-		if (_.isArray(template)) return template.map(function(t) {
-			return this._processStringTemplate(t, scope);
-		},this).filter(function(b) { return b != null; }).join("");
-
-		switch(template.type) {
-			case NODE_TYPE.TEXT:
-				return template.value;
-
-			case NODE_TYPE.INTERPOLATOR:
-			case NODE_TYPE.TRIPLE:
-				var val = scope.get(template.value);
-				return val != null ? val.toString() : "";
-
-			case NODE_TYPE.SECTION:
-			case NODE_TYPE.INVERTED:
-				var inverted = template.type === NODE_TYPE.INVERTED,
-					path = template.value,
-					val = scope.get(path),
-					isEmpty = Section.isEmpty(val);
-
-				scope.depend(util.joinPathParts(path, "*"));
-
-				if (!(isEmpty ^ inverted)) {
-					if (_.isArray(val) && !inverted) {
-						return val.map(function(v, i) {
-							var nscope = scope.createScopeFromPath(util.joinPathParts(path, i));
-							return this._processStringTemplate(template.children, nscope);
-						}, this).join("");
-					} else {
-						var nscope = scope.createScopeFromPath(template.value);
-						return this._processStringTemplate(template.children, nscope);
-					}
-				} else {
-					return;
-				}
-				
-			default:
-				console.log(template);
-		}
-	}
 }, {
-	parse: parse
+	parse: parse,
+	NODE_TYPE: NODE_TYPE
 });
 
 function convertTemplateToArgs(template) {
@@ -2694,10 +2659,90 @@ function convertTemplateToArgs(template) {
 
 	return template;
 }
-},{"../binding":6,"../temple":18,"../types":19,"../util":20,"./arguments.js":11,"./parse":13,"./section":14,"underscore":25}],13:[function(_dereq_,module,exports){
+
+function getModelByPath(path, context) {
+	var parts = util.splitPath(path),
+		focus = false;
+
+	if (parts[0] === "this") {
+		parts.shift();
+		focus = true;
+	}
+
+	return function() {
+		var scope = this,
+			model;
+
+		if (focus) {
+			while (scope.parent !== context) {
+				scope = scope.parent;
+				if (scope == null) return;
+			}
+
+			model = scope.model;
+		} else {
+			model = scope.findModel(parts) || scope;
+		}
+
+		scope.depend(parts);
+		return model.getModel(parts);
+	}
+}
+
+function convertStringTemplate(template, context, base) {
+	var self = this;
+
+	if (_.isArray(template)) return template.map(function(t) {
+		return convertStringTemplate.call(self, t, context, base);
+	}).filter(function(b) { return b != null; }).join("");
+
+	function getter(path) {
+		var model = getModelByPath(util.joinPathParts(base, path), context).call(self),
+			val = model != null ? model.get() : null;
+		
+		if (_.isFunction(val)) val = val.call(self);
+		return val;
+	}
+
+	switch(template.type) {
+		case NODE_TYPE.TEXT:
+			return template.value;
+
+		case NODE_TYPE.INTERPOLATOR:
+		case NODE_TYPE.TRIPLE:
+			var val = getter(template.value);
+			return val != null ? val.toString() : "";
+
+		case NODE_TYPE.SECTION:
+		case NODE_TYPE.INVERTED:
+			var inverted = template.type === NODE_TYPE.INVERTED,
+				path = template.value,
+				val = getter(path),
+				isEmpty = Section.isEmpty(val);
+
+			context.depend(util.joinPathParts(path, "*"));
+
+			if (!(isEmpty ^ inverted)) {
+				if (_.isArray(val) && !inverted) {
+					return val.map(function(v, i) {
+						var p = util.joinPathParts(path, i);
+						return convertStringTemplate.call(self, template.children, context, p);
+					}).join("");
+				} else {
+					return convertStringTemplate.call(self, template.children, context, path);
+				}
+			} else {
+				return;
+			}
+			
+		default:
+			console.log(template);
+	}
+}
+},{"../temple":18,"../util":19,"./arguments.js":11,"./parse":13,"./section":14,"./types":15,"underscore":23}],13:[function(_dereq_,module,exports){
 var Hogan = _dereq_("hogan.js"),
 	xml = _dereq_('./xml.js'),
-	NODE_TYPE = _dereq_("../types"),
+	NODE_TYPE = _dereq_("./types"),
 	HTML_DELIMITERS = [ "[#@!", "!@#]" ];
 
 var parse =
@@ -2870,7 +2915,7 @@ function compileElements(nodes, tree) {
 function compileXML(tree) {
 	return compileElements(parseXML(tree), tree);
 }
-},{"../types":19,"./xml.js":15,"hogan.js":23}],14:[function(_dereq_,module,exports){
+},{"./types":15,"./xml.js":16,"hogan.js":21}],14:[function(_dereq_,module,exports){
 var _ = _dereq_("underscore"),
 	Binding = _dereq_("../binding"),
 	util = _dereq_("../util"),
@@ -2878,133 +2923,118 @@ var _ = _dereq_("underscore"),
 	Deps = _dereq_("../deps");
 
 var Section =
-module.exports = Binding.extend({
-	constructor: function(path, body, inverted) {
-		if (!_.isString(path))
-			throw new Error("Expecting string path.");
+module.exports = Binding.React.extend({
+	constructor: function(value, body, inverted, data) {
+		if (!_.isFunction(value))
+			throw new Error("Expecting function for section value.");
 
 		if (!_.isFunction(body))
-			throw new Error("Expecting function for body.");
+			throw new Error("Expecting function for section body.");
 
-		this.path = path;
-		this.body = function() {
-			var args = arguments, ctx = this;
-			return Deps.nonreactive(function() {
-				return body.apply(ctx, args);
-			});
-		}
+		this.value = value;
+		this.body = body;
 		this.inverted = !!inverted;
-		this.binding = null;
-		this.placeholder = document.createComment(_.uniqueId("$"));
 
-		Binding.call(this);
+		Binding.React.call(this, null, data);
 	},
 
-	addChild: function() {
-		throw new Error("Section bindings can't have children.");
-	},
-
-	destroyBinding: function() {
-		if (this.binding != null) {
-			this.binding.destroy();
-			delete this.binding;
-		}
-
-		return this;
-	},
-
-	refreshBinding: function() {
-		if (this.binding != null) {
-			var parent = this.placeholder.parentNode;
-			if (parent != null) this.binding.appendTo(parent, this.placeholder);
-		}
-
-		return this;
-	},
-
-	dependOnLength: function(scope) {
+	dependOnLength: function(model) {
 		if (!Deps.active) return this;
-		
-		var path, self = this,
-			dep = new Deps.Dependency;
 
-		path = util.joinPathParts(this.path, "length");
-		scope.observe(path, onChange);
+		var dep = new Deps.Dependency,
+			self = this;
+
+		model.on("change", onChange);
 
 		function onChange(s) {
+			if (s.keypath.length !== 1 || s.keypath[0] !== "length") return;
+			
 			if ((self.inverted && s.value > 0) ||
 				(!self.inverted && s.value === 0)) dep.changed();
 		}
 
 		Deps.currentComputation.onInvalidate(function() {
-			scope.stopObserving(path, onChange);
+			model.off("change", onChange);
 		});
 
 		dep.depend();
 		return this;
 	},
 
-	render: function(scope) {
-		this.autorun("render", function(comp) {
-			this.destroyBinding();
+	dependOnModel: function(model) {
+		if (!Deps.active) return this;
+		
+		var dep = new Deps.Dependency,
+			self = this,
+			value = model.value;
 
-			var model = (scope.findModel(this.path) || scope).getModel(this.path),
-				val = model.handle("toArray"),
-				isEmpty;
+		model.on("change", onChange);
 
-			scope.depend(this.path);
-			if (!_.isArray(val)) val = scope.get(this.path);
-			isEmpty = Section.isEmpty(val);
-			
-			if (isEmpty && this.inverted) {
-				if (_.isArray(val)) this.dependOnLength(scope);
-				this.binding = new Binding.Context(this.path, this.body(0));
-			} else if (!isEmpty && !this.inverted) {
-				if (_.isArray(val)) {
-					this.dependOnLength(scope);
-					this.binding = new Binding.Each(this.path, this.body.bind(this));
-				} else this.binding = new Binding.Context(this.path, this.body(0));
-			} else {
-				// listen for changes to children to update the binding type
-				scope.depend(util.joinPathParts(this.path, "*" ));
-			}
+		function onChange(s) {
+			if (s.keypath.length !== 1) return;
+			dep.changed();
+		}
 
-			if (this.binding != null) {
-				this.binding.render(scope);
-				this.refreshBinding();
-			}
+		Deps.currentComputation.onInvalidate(function() {
+			model.off("change", onChange);
 		});
 
+		dep.depend();
 		return this;
 	},
 
-	appendTo: function(parent, before) {
-		parent.insertBefore(this.placeholder, before);
-		this.refreshBinding();
-		return this;
-	},
+	render: function() {
+		var model = this.value(),
+			val, isEmpty;
+		
+		// must return a model
+		if (!Model.isModel(model)) return;
 
-	find: function(selector) {
-		return this.binding != null ? this.binding.find(selector) : null;
-	},
+		val = model.handle("toArray");
+		if (!_.isArray(val)) val = model.get();
+		if (_.isFunction(val)) val = val.call(this);
+		isEmpty = Section.isEmpty(val);
 
-	findAll: function(selector) {
-		return this.binding != null ? this.binding.findAll(selector) : [];
-	},
-
-	destroy: function() {
-		this.destroyBinding();
-		var parent = this.placeholder.parentNode;
-		if (parent != null) parent.removeChild(this.placeholder);
-
-		return Binding.prototype.destroy.apply(this, arguments);
+		if (isEmpty && this.inverted) {
+			if (_.isArray(val)) this.dependOnLength(model);
+			var b = new Binding(model);
+			b.addChild(this.body.call(this, model, 0));
+			return b;
+		} else if (!isEmpty && !this.inverted) {
+			if (_.isArray(val)) {
+				this.dependOnLength(model);
+				return new Binding.Each(this.body, model);
+			} else {
+				var b = new Binding(model);
+				b.addChild(this.body.call(this, model, 0));
+				return b;
+			}
+		} else {
+			this.dependOnModel(model);
+		}
 	}
 }, {
 	isEmpty: function(val) {
 		return !val || (_.isArray(val) && !val.length);
 	}
 });
-},{"../binding":6,"../deps":8,"../model":10,"../util":20,"underscore":25}],15:[function(_dereq_,module,exports){
+},{"../binding":4,"../deps":7,"../model":10,"../util":19,"underscore":23}],15:[function(_dereq_,module,exports){
+module.exports = {
+	ROOT              : 0,
+
+	// XML/HTML
+	TEXT              : 1,
+	ELEMENT           : 2,
+	ATTRIBUTE         : 3,
+	
+	// Mustache
+	INTERPOLATOR      : 4,
+	TRIPLE            : 5,
+	SECTION           : 6,
+	INVERTED          : 7,
+	PARTIAL           : 8
+}
+},{}],16:[function(_dereq_,module,exports){
 module.exports = (function() {
   /*
    * Generated by PEG.js 0.8.0.
@@ -3934,159 +3964,103 @@ module.exports = (function() {
     parse:       parse
   };
 })();
-},{"underscore":25}],16:[function(_dereq_,module,exports){
-var util = _dereq_("./util"),
-	_ = _dereq_("underscore"),
-	Binding = _dereq_("./binding"),
-	Scope = _dereq_("./scope");
-
-exports.forceUpdate = function() {
-	if (this.binding != null) this.binding.render(this);
-	return this;
-}
-
-exports.paint = function(parent, beforeNode) {
-	if (this.binding == null) {
-		var binding = this.render();
-		if (Array.isArray(binding)) binding = new Binding(binding);
-		if (!(binding instanceof Binding)) throw new Error("Expecting template render method to return an instance of Binding.");
-		this.binding = binding;
-
-		this.forceUpdate();
-		this.emit("render", this.binding);
-	}
-
-	if (_.isString(parent)) parent = document.querySelector(parent);
-	if (_.isString(beforeNode)) beforeNode = parent.querySelector(beforeNode);
-	if (parent == null) parent = document.createDocumentFragment();
-	
-	this.binding.appendTo(parent, beforeNode);
-	this.emit("paint", parent, beforeNode);
-
-	return this;
-}
-
-exports.render = function() {
-	throw new Error("Missing render method.");
-}
-
-exports.erase = function() {
-	if (this.binding != null) {
-		this.binding.destroy();
-		delete this.binding;
-		this.emit("erase");
-	}
-
-	return this;
-}
-
-exports.toString =
-exports.toHTML = function() {
-	var binding, html;
-
-	binding = this.render();
-	binding.render(this);
-	html = binding.toString();
-	binding.destroy();
-	
-	return html;
-}
-
-exports.find = function(selector) {
-	if (this.binding != null) return this.binding.find(selector);
-	return null;
-}
-
-exports.findAll = function(selector) {
-	if (this.binding != null) return this.binding.findAll(selector);
-	return [];
-}
-
-exports.destroy = function() {
-	this.erase();
-	return Scope.prototype.destroy.apply(this, arguments);
-}
-},{"./binding":6,"./scope":17,"./util":20,"underscore":25}],17:[function(_dereq_,module,exports){
+},{"underscore":23}],17:[function(_dereq_,module,exports){
 var _ = _dereq_("underscore"),
 	util = _dereq_("./util"),
-	EventEmitter = _dereq_("events").EventEmitter,
+	Events = _dereq_("./events"),
 	Model = _dereq_("./model"),
 	Deps = _dereq_("./deps");
 
-var proto = {
+var Scope =
+module.exports = function Scope(model) {
+	this.children = [];
+	this._comps = {};
+	this._observers = [];
+	this._deps = [];
 
-	constructor: function(model) {
-		EventEmitter.call(this);
-		this.setMaxListeners(0);
+	// event that proxies changes to all children
+	this.on("change", function() {
+		var args = _.toArray(arguments);
+		this.children.forEach(function(child) {
+			child._onChange.apply(child, args);
+		});
+	});
 
-		// convert data to model if isn't one already
-		if (!Scope.isScope(model) && !Model.isModel(model)) {
+	// set the initial data
+	this.setModel(model);
+}
+
+Scope.extend = util.subclass;
+Scope.isScope = function(obj) {
+	return obj instanceof Scope;
+}
+
+_.extend(Scope.prototype, Events, {
+	setModel: function(model) {
+		if (!Model.isModel(model)) {
 			var data = model;
 			model = new Model(_.result(this, "defaults"));
 			if (!_.isUndefined(data)) model.set([], data);
 		}
 
-		this.models = [];
-		this._observers = [];
-		this._deps = [];
-		this._hidden = {};
+		// clear existing model
+		this.clearModel();
+		
+		// add the new one
+		this.model = model;
+		model.on("change", this._onChange, this);
+		this.trigger("model", model);
 
-		this.addModel(model);
-		this.initialize();
+		return this;
 	},
 
-	initialize: function() {},
-
-	createScopeFromPath: function(path) {
-		if (!_.isString(path)) throw new Error("Expecting string path.");
-		var model = (this.findModel(path) || this).getModel(path);
-		return new Scope(model).addModel(this);
-	},
-
-	// adds a model to the set
-	addModel: function(model) {
-		// accept scopes and arrays, but reduce them to models
-		if (Scope.isScope(model)) this.addModel(model.models);
-		else if (_.isArray(model)) {
-			model.forEach(function(m) { this.addModel(m); }, this);
-		}
-
-		else {
-			if (!Model.isModel(model)) throw new Error("Expecting model.");
-			if (!~this.models.indexOf(model)) {
-				this.models.push(model);
-
-				// add observers
-				this._observers.forEach(function(ob) {
-					model.on("change", ob.onChange);
-				});
-
-				this.emit("model:add", model);
-			}
+	clearModel: function() {
+		if (this.model != null) {
+			model.off("change", this._onChange);
+			delete this.model;
+			this.trigger("model");
 		}
 
 		return this;
 	},
- 
-	// removes a previously added model
-	removeModel: function(model) {
-		if (Scope.isScope(model)) this.removeModel(model.models);
-		else if (_.isArray(model)) {
-			model.forEach(function(m) { this.removeModel(m); }, this);
+
+	addChild: function(child) {
+		if (_.isArray(child)) {
+			child.forEach(this.addChild, this);
+			return this;
 		}
 
-		else {
-			var index = this.models.indexOf(model);
-			if (~index) {
-				this.models.splice(index, 1);
+		if (!Scope.isScope(child))
+			throw new Error("Expected array or instance of Scope for children.");
 
-				// strip observers
-				this._observers.forEach(function(ob) {
-					model.removeListener("change", ob.onChange);
-				});
+		// ensure the binding is not already a child
+		if (~this.children.indexOf(child)) return this;
 
-				this.emit("model:remove", model);
-			}
+		// remove from existing parent
+		if (child.parent != null) child.parent.removeChild(child);
+
+		this.children.push(child);
+		child.parent = this;
+
+		this.trigger("child:add", child);
+		child.trigger("parent:add", this);
+
+		return this;
+	},
+
+	removeChild: function(child) {
+		if (_.isArray(child)) {
+			child.forEach(this.removeChild, this);
+			return this;
+		}
+
+		var index = this.children.indexOf(child);
+		
+		if (~index) {
+			this.children.splice(index, 1);
+			child.trigger("parent:remove", this);
+			this.trigger("child:remove", child);
+			if (child.parent === this) delete child.parent;
 		}
 
 		return this;
@@ -4094,38 +4068,36 @@ var proto = {
 
 	// returns the first model whose value at path isn't undefined
 	findModel: function(path) {
-		return _.find(this.models, function(model) {
-			return !_.isUndefined(model.get(path));
-		});
+		var i, models = this.getModels();
+
+		for (var i in models)
+			if (models[i].get(path) !== void 0)
+				return models[i];
+
+		return null;
+	},
+
+	getModels: function() {
+		var models = [],
+			c = this;
+		
+		while (c != null) {
+			if (c.model) models.push(c.model);
+			c = c.parent;
+		}
+
+		return models;
 	},
 
 	get: function(parts) {
-		var val, model;
-
-		parts = util.splitPath(parts);
-
-		if (parts[0] === "this") {
-			parts.shift();
-			val = this.models[0].get(parts);
-		}
-
-		else {
-			model = this.findModel(parts);
-			if (model != null) val = model.get(parts);
-
-			// check hidden values
-			if (_.isUndefined(val) && parts.length) {
-				val = util.get(this._hidden, parts);
-			}
-		}
-
-		// execute functions
-		if (_.isFunction(val)) val = val.call(this);
-
-		// always depend
 		if (Deps.active) this.depend(parts);
+		parts = util.splitPath(parts);
+		var model = this.findModel(parts);
+		if (model != null) return model.get(parts);
+	},
 
-		return val;
+	keys: function(path) {
+		return (this.findModel(path) || this).keys(path);
 	},
 
 	// registers a dependency at path and observes changes
@@ -4136,155 +4108,83 @@ var proto = {
 		// create if doesn't exist
 		if (dep == null) {
 			dep = this._deps[path] = new Deps.Dependency;
-			dep._observer = this.observe(parts, function() { dep.changed(); });
+			this.observe(parts, dep._observer = function() { dep.changed(); });
 		}
 
 		dep.depend();
 		return this;
 	},
 
-	// reruns fn anytime dependencies change
-	autorun: function(fn) {
-		return Deps.autorun(fn.bind(this));
+	// runs fn when deps change
+	autorun: function(name, fn) {
+		if (_.isFunction(name) && fn == null) {
+			fn = name;
+			name = _.uniqueId("f");
+		}
+
+		if (!_.isString(name)) throw new Error("Expecting string for computation identifier.");
+		if (!_.isFunction(fn)) throw new Error("Expecting function for computation.");
+
+		this.stopComputation(name);
+		var self = this;
+
+		return this._comps[name] = Deps.autorun(function(comp) {
+			fn.call(self, comp);
+			
+			comp.onInvalidate(function() {
+				if (comp.stopped && self._comps[name] === comp) {
+					delete self._comps[name];
+				}
+			});
+		});
+	},
+
+	stopComputation: function(name) {
+		if (name == null) {
+			_.each(this._comps, function(c) {
+				c.stop();
+			});
+
+			this._comps = {};
+		}
+
+		else if (this._comps[name] != null) {
+			this._comps[name].stop();
+		}
+
+		return this;
 	},
 
 	// calls fn when path changes
 	observe: function(path, fn) {
 		if (!_.isFunction(fn)) throw new Error("Expecting a function to call on change.");
 
-		var matchParts = _.isArray(path) ? path : util.parsePath(path),
-			self = this;
+		var matchParts = _.isArray(path) ? path : util.parsePath(path);
 
 		// remember the observer so we can kill it later
 		this._observers.push({
 			path: path,
-			fn: fn,
-			onChange: onChange
+			parts: matchParts,
+			fn: fn
 		});
 
-		// apply to all existing models
-		this.models.forEach(function(m) {
-			m.on("change", onChange);
-		});
-		
 		return this;
-
-		function onChange(chg) {
-			var keys, newval, oldval, model,
-				ngetter, ogetter, parts, part, base, paths, i,
-				cmodel, cindex, pmodel, omodel;
-
-			// clone parts so we don't affect the original
-			parts = matchParts.slice(0);
-			keys = chg.keypath;
-			newval = chg.value;
-			oldval = chg.oldValue;
-			model = chg.model;
-			pmodel = model;
-
-			// we need to get the true old and new values based on all the models
-			if (chg.type !== "update") {
-				cmodel = self.findModel(chg.keypath);
-
-				if (cmodel != null) {
-					cindex = self.models.indexOf(cmodel);
-					
-					if (cmodel === this) {
-						omodel = _.find(self.models.slice(cindex + 1), function(model) {
-							return !_.isUndefined(model.get(path));
-						});
-
-						if (omodel != null) {
-							pmodel = omodel.getModel(keys);
-							oldval = pmodel.value;
-						}
-					
-					} else if (cindex > self.models.indexOf(this)) {
-						pmodel = model;
-						model = cmodel.getModel(keys);
-						newval = model.value;
-
-					} else return;
-				}
-			}
-
-			// traverse through cparts
-			// a mismatch means we don't need to be here
-			for (i = 0; i < keys.length; i++) {
-				part = parts.shift();
-				if (_.isRegExp(part) && part.test(keys[i])) continue;
-				if (part === "**") {
-					// look ahead
-					if (parts[0] == null || parts[0] !== keys[i + 1]) {
-						parts.unshift(part);
-					}
-					continue;
-				}
-				if (part !== keys[i]) return;
-			}
-
-			paths = [];
-			base = util.joinPathParts(keys);
-
-			// generate a list of effected paths
-			findAllMatchingPaths.call(this, model, newval, parts, paths);
-			findAllMatchingPaths.call(this, pmodel, oldval, parts, paths);
-			paths = util.findShallowestUniquePaths(paths);
-
-			// getters for retrieving values at path
-			ngetter = function(obj, path) {
-				return Model.createHandle(model, obj)("get", path);
-			}
-
-			if (model === pmodel) ogetter = ngetter;
-			else ogetter = function(obj, path) {
-				return Model.createHandle(pmodel, obj)("get", path);
-			}
-			
-			// fire the callback on each path that changed
-			paths.forEach(function(keys, index, list) {
-				var path, localModel, nval, oval;
-
-				nval = util.get(newval, keys, ngetter),
-				oval = util.get(oldval, keys, ogetter);
-				if (nval === oval) return;
-
-				fn.call(self, {
-					model: model.getModel(keys),
-					previousModel: pmodel.getModel(keys),
-					path: util.joinPathParts(base, keys),
-					type: util.changeType(nval, oval),
-					value: nval,
-					oldValue: oval
-				});
-			});
-		}
 	},
 
 	stopObserving: function(path, fn) {
-		var obs;
+		if (path == null && fn == null) {
+			this._observers = [];
+			return this;
+		}
 
 		if (_.isFunction(path) && fn == null) {
 			fn = path;
 			path = null;
 		}
 
-		if (path == null && fn == null) {
-			obs = this._observers;
-			this._observers = [];
-		}
-
-		else {
-			obs = this._observers.filter(function(o) {
-				return (path == null || path === o.path) && (fn == null || fn === o.fn);
-			});
-		}
-
-		obs.forEach(function(o) {
-			this.models.forEach(function(m) {
-				m.removeListener("change", o.onChange);
-			});
-
+		this._observers.filter(function(o) {
+			return (path == null || path === o.path) && (fn == null || fn === o.fn);
+		}).forEach(function(o) {
 			var index = this._observers.indexOf(o);
 			if (~index) this._observers.splice(index, 1);
 		}, this);
@@ -4292,52 +4192,162 @@ var proto = {
 		return this;
 	},
 
-	// set a hidden value
-	setHidden: function(path, value) {
-		if (_.isUndefined(value)) delete this._hidden[path];
-		else this._hidden[path] = value;
-		return this;
-	},
+	// model onChange event
+	_onChange: function() {
+		var args = _.toArray(arguments);
 
-	// cleans up the scope so it can be properly garbage collected
-	destroy: function() {
-		this.removeModel(this.models.slice(0));
-		this.stopObserving();
-		this.emit("destroy");
-		return this;
+		// handle all the observers
+		this._observers.forEach(function(ob) {
+			handleObserver.apply(this, [ob].concat(args));
+		}, this);
+
+		// pass up changes
+		this.trigger.apply(this, ["change"].concat(args));
 	}
-
-};
+});
 
 // chainable proxy methods
 [ "handle", "set", "unset" ]
 .forEach(function(method) {
-	proto[method] = function() {
-		var model = this.models[0];
+	Scope.prototype[method] = function() {
+		var model = this.model;
 		model[method].apply(model, arguments);
 		return this;
 	}
 });
 
 // proxy methods which don't return this
-[ "getModel", "keys", "notify" ]
+[ "getModel", "notify" ]
 .forEach(function(method) {
-	proto[method] = function() {
-		var model = this.models[0];
+	Scope.prototype[method] = function() {
+		var model = this.model;
 		return model[method].apply(model, arguments);
 	}
 });
 
-var Scope =
-module.exports = util.subclass.call(EventEmitter, proto, {
+// handles an observer and a change summary
+function handleObserver(ob, chg, opts, model) {
+	var parts, paths, base, getter,
+		scope = this;
 
-	extend: util.subclass,
+	// clone parts so we don't affect the original
+	parts = ob.parts.slice(0);
 
-	isScope: function(obj) {
-		return obj instanceof Scope;
+	// match the beginning of parts
+	if (!matchPathStart(chg.keypath, parts)) return;
+
+	paths = [];
+	base = util.joinPathParts(chg.keypath);
+	getter = function(obj, path) {
+		return chg.model.createHandle(obj)("get", path);
 	}
 
-});
+	// generate a list of effected paths
+	findAllMatchingPaths(chg.model, chg.value, parts, paths);
+	findAllMatchingPaths(chg.model, chg.oldValue, parts, paths);
+	paths = util.findShallowestUniquePaths(paths);
+
+	// fire the callback on each path that changed
+	paths.forEach(function(keys, index, list) {
+		var nval, oval, summary;
+
+		nval = util.get(chg.value, keys, getter);
+		oval = util.get(chg.oldValue, keys, getter);
+		if (nval === oval) return;
+
+		var summary = {
+			model: chg.model.getModel(keys),
+			keypath: chg.keypath.concat(keys),
+			type: util.changeType(nval, oval),
+			value: nval,
+			oldValue: oval
+		};
+
+		if (intersectChange.call(scope, model, summary)) ob.fn.call(scope, summary);
+	});
+}
+
+// modifies a change summary to incorporate all models in scope
+function intersectChange(model, summary) {
+	var models = this.getModels(),
+		dindex = models.indexOf(model),
+		cindex = -1;
+
+	// delta model must exist in models or things go wacky
+	if (!~dindex) return false;
+
+	models.some(function(model, index) {
+		if (model.get(summary.keypath) !== void 0) {
+			cindex = index;
+			return true;
+		}
+	}, model);
+
+	// default previous is the delta model
+	summary.previousModel = summary.model;
+
+	switch(summary.type) {
+		case "add":
+			// if the delta index is after the current index, move along
+			// if the delta index is before the current index, something went wrong
+			if (dindex !== cindex) return false;
+
+			// find the model after the current one that previously contained the value
+			var pmodel = _.find(models.slice(cindex + 1), function(model) {
+				return model.get(summary.keypath) !== void 0;
+			});
+
+			if (pmodel != null) {
+				summary.previousModel = pmodel.getModel(summary.keypath);
+				summary.oldValue = summary.previousModel.value;
+			}
+
+			break;
+
+		case "update":
+			// if the delta index is after the current index, move along
+			// if the delta index is before the current index, something went wrong
+			if (dindex !== cindex) return false;
+
+			break;
+
+		case "delete":
+			// with deletes, only modify the summary if the current model exists
+			if (cindex > -1) {
+				// if the delta index isn't before the current index, something went wrong
+				if ( cindex <= dindex) return false;
+
+				// a delete means the summary model is the delta model
+				summary.model = models[cindex].getModel(summary.keypath);
+				summary.value = summary.model.value;
+			}
+	}
+
+	summary.type = util.changeType(summary.value, summary.oldValue);
+
+	return summary;
+}
+
+// matchs the start of a keypath to a list of match parts
+// parts is modified to the remaining segments that were not matched
+function matchPathStart(keys, parts) {
+	var i, part;
+
+	for (i = 0; i < keys.length; i++) {
+		part = parts.shift();
+		if (_.isRegExp(part) && part.test(keys[i])) continue;
+		if (part === "**") {
+			// look ahead
+			if (parts[0] == null || parts[0] !== keys[i + 1]) {
+				parts.unshift(part);
+			}
+			continue;
+		}
+		if (part !== keys[i]) return false;
+	}
+
+	return true;
+}
 
 // deeply traverses a value in search of all paths that match parts
 function findAllMatchingPaths(model, value, parts, paths, base) {
@@ -4349,14 +4359,14 @@ function findAllMatchingPaths(model, value, parts, paths, base) {
 		return paths;
 	}
 
-	var handle = Model.createHandle(model, value),
+	var handle = model.createHandle(value),
 		part = parts[0],
 		rest = parts.slice(1);
 
 	if (_.isRegExp(part)) {
 		handle("keys").forEach(function(k) {
-			findAllMatchingPaths.call(this, model.getModel(k), handle("get", k), rest, paths, base.concat(k));
-		}, this);
+			findAllMatchingPaths(model.getModel(k), handle("get", k), rest, paths, base.concat(k));
+		});
 	} else if (part === "**") {
 		if (handle("isLeaf")) {
 			if (!rest.length) paths.push(base);
@@ -4373,67 +4383,40 @@ function findAllMatchingPaths(model, value, parts, paths, base) {
 				_base = base.concat(k);
 			}
 
-			findAllMatchingPaths.call(this, model.getModel(k), handle("get", k), _rest, paths, _base);
-		}, this);
+			findAllMatchingPaths(model.getModel(k), handle("get", k), _rest, paths, _base);
+		});
 	} else {
-		findAllMatchingPaths.call(this, model.getModel(part), handle("get", part), rest, paths, base.concat(part));
+		findAllMatchingPaths(model.getModel(part), handle("get", part), rest, paths, base.concat(part));
 	}
 
 	return paths;
 }
-},{"./deps":8,"./model":10,"./util":20,"events":21,"underscore":25}],18:[function(_dereq_,module,exports){
-var EventEmitter = _dereq_("events").EventEmitter,
-	_ = _dereq_("underscore"),
+},{"./deps":7,"./events":8,"./model":10,"./util":19,"underscore":23}],18:[function(_dereq_,module,exports){
+var _ = _dereq_("underscore"),
 	util = _dereq_("./util"),
-	Scope = _dereq_("./scope"),
 	Binding = _dereq_("./binding");
 
-// base prototype
-var proto = {
+// export
+var Temple =
+module.exports = Binding.React.extend({
 	use: function(fn) {
 		var args = _.toArray(arguments).slice(1);
 		fn.apply(this, args);
 		return this;
 	}
-};
-
-// render methods
-_.each(_dereq_("./render"), function(method, key) {
-	proto[key] = method;
 });
 
-// export
-var Temple =
-module.exports = Scope.extend(proto);
-
 // class properties/methods
-Temple.VERSION = "0.2.9-rc1";
+Temple.VERSION = "0.2.10-alpha";
 Temple.util = util;
 
 Temple.Deps = _dereq_("./deps");
-Temple.Scope = Scope;
+Temple.Scope = _dereq_("./scope");
 Temple.Model = _dereq_("./model");
 
 Temple.Mustache = _dereq_("./mustache");
-Temple.NODE_TYPE = _dereq_("./types");
 Temple.Binding = Binding;
-},{"./binding":6,"./deps":8,"./model":10,"./mustache":12,"./render":16,"./scope":17,"./types":19,"./util":20,"events":21,"underscore":25}],19:[function(_dereq_,module,exports){
-module.exports = {
-	ROOT              : 0,
-
-	// XML/HTML
-	TEXT              : 1,
-	ELEMENT           : 2,
-	ATTRIBUTE         : 3,
-	
-	// Mustache
-	INTERPOLATOR      : 4,
-	TRIPLE            : 5,
-	SECTION           : 6,
-	INVERTED          : 7,
-	PARTIAL           : 8
-}
-},{}],20:[function(_dereq_,module,exports){
+},{"./binding":4,"./deps":7,"./model":10,"./mustache":12,"./scope":17,"./util":19,"underscore":23}],19:[function(_dereq_,module,exports){
 var _ = _dereq_("underscore");
 
 // tests value as pojo (plain old javascript object)
@@ -4500,7 +4483,6 @@ exports.sanitizePathParts = function(parts) {
 var splitPath =
 exports.splitPath = function(path) {
 	var parts = _.isArray(path) ? path : _.isString(path) ? path.split(".") : [ path ];
-	if (parts.length > 1 && parts[0] === "") parts[0] = "this";
 	return sanitizePathParts(parts);
 }
 
@@ -4731,312 +4713,7 @@ exports.matchSelector = function(node, selector) {
 exports.changeType = function(nval, oval) {
 	return _.isUndefined(oval) ? "add" : _.isUndefined(nval) ? "delete" : "update";
 }
-},{"underscore":25}],21:[function(_dereq_,module,exports){
-// Copyright Joyent, Inc. and other Node contributors.
-//
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and associated documentation files (the
-// "Software"), to deal in the Software without restriction, including
-// without limitation the rights to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Software, and to permit
-// persons to whom the Software is furnished to do so, subject to the
-// following conditions:
-//
-// The above copyright notice and this permission notice shall be included
-// in all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
-// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
-// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
-// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
-// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
-// USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-function EventEmitter() {
-  this._events = this._events || {};
-  this._maxListeners = this._maxListeners || undefined;
-}
-module.exports = EventEmitter;
-
-// Backwards-compat with node 0.10.x
-EventEmitter.EventEmitter = EventEmitter;
-
-EventEmitter.prototype._events = undefined;
-EventEmitter.prototype._maxListeners = undefined;
-
-// By default EventEmitters will print a warning if more than 10 listeners are
-// added to it. This is a useful default which helps finding memory leaks.
-EventEmitter.defaultMaxListeners = 10;
-
-// Obviously not all Emitters should be limited to 10. This function allows
-// that to be increased. Set to zero for unlimited.
-EventEmitter.prototype.setMaxListeners = function(n) {
-  if (!isNumber(n) || n < 0 || isNaN(n))
-    throw TypeError('n must be a positive number');
-  this._maxListeners = n;
-  return this;
-};
-
-EventEmitter.prototype.emit = function(type) {
-  var er, handler, len, args, i, listeners;
-
-  if (!this._events)
-    this._events = {};
-
-  // If there is no 'error' event listener then throw.
-  if (type === 'error') {
-    if (!this._events.error ||
-        (isObject(this._events.error) && !this._events.error.length)) {
-      er = arguments[1];
-      if (er instanceof Error) {
-        throw er; // Unhandled 'error' event
-      } else {
-        throw TypeError('Uncaught, unspecified "error" event.');
-      }
-      return false;
-    }
-  }
-
-  handler = this._events[type];
-
-  if (isUndefined(handler))
-    return false;
-
-  if (isFunction(handler)) {
-    switch (arguments.length) {
-      // fast cases
-      case 1:
-        handler.call(this);
-        break;
-      case 2:
-        handler.call(this, arguments[1]);
-        break;
-      case 3:
-        handler.call(this, arguments[1], arguments[2]);
-        break;
-      // slower
-      default:
-        len = arguments.length;
-        args = new Array(len - 1);
-        for (i = 1; i < len; i++)
-          args[i - 1] = arguments[i];
-        handler.apply(this, args);
-    }
-  } else if (isObject(handler)) {
-    len = arguments.length;
-    args = new Array(len - 1);
-    for (i = 1; i < len; i++)
-      args[i - 1] = arguments[i];
-
-    listeners = handler.slice();
-    len = listeners.length;
-    for (i = 0; i < len; i++)
-      listeners[i].apply(this, args);
-  }
-
-  return true;
-};
-
-EventEmitter.prototype.addListener = function(type, listener) {
-  var m;
-
-  if (!isFunction(listener))
-    throw TypeError('listener must be a function');
-
-  if (!this._events)
-    this._events = {};
-
-  // To avoid recursion in the case that type === "newListener"! Before
-  // adding it to the listeners, first emit "newListener".
-  if (this._events.newListener)
-    this.emit('newListener', type,
-              isFunction(listener.listener) ?
-              listener.listener : listener);
-
-  if (!this._events[type])
-    // Optimize the case of one listener. Don't need the extra array object.
-    this._events[type] = listener;
-  else if (isObject(this._events[type]))
-    // If we've already got an array, just append.
-    this._events[type].push(listener);
-  else
-    // Adding the second element, need to change to array.
-    this._events[type] = [this._events[type], listener];
-
-  // Check for listener leak
-  if (isObject(this._events[type]) && !this._events[type].warned) {
-    var m;
-    if (!isUndefined(this._maxListeners)) {
-      m = this._maxListeners;
-    } else {
-      m = EventEmitter.defaultMaxListeners;
-    }
-
-    if (m && m > 0 && this._events[type].length > m) {
-      this._events[type].warned = true;
-      console.error('(node) warning: possible EventEmitter memory ' +
-                    'leak detected. %d listeners added. ' +
-                    'Use emitter.setMaxListeners() to increase limit.',
-                    this._events[type].length);
-      if (typeof console.trace === 'function') {
-        // not supported in IE 10
-        console.trace();
-      }
-    }
-  }
-
-  return this;
-};
-
-EventEmitter.prototype.on = EventEmitter.prototype.addListener;
-
-EventEmitter.prototype.once = function(type, listener) {
-  if (!isFunction(listener))
-    throw TypeError('listener must be a function');
-
-  var fired = false;
-
-  function g() {
-    this.removeListener(type, g);
-
-    if (!fired) {
-      fired = true;
-      listener.apply(this, arguments);
-    }
-  }
-
-  g.listener = listener;
-  this.on(type, g);
-
-  return this;
-};
-
-// emits a 'removeListener' event iff the listener was removed
-EventEmitter.prototype.removeListener = function(type, listener) {
-  var list, position, length, i;
-
-  if (!isFunction(listener))
-    throw TypeError('listener must be a function');
-
-  if (!this._events || !this._events[type])
-    return this;
-
-  list = this._events[type];
-  length = list.length;
-  position = -1;
-
-  if (list === listener ||
-      (isFunction(list.listener) && list.listener === listener)) {
-    delete this._events[type];
-    if (this._events.removeListener)
-      this.emit('removeListener', type, listener);
-
-  } else if (isObject(list)) {
-    for (i = length; i-- > 0;) {
-      if (list[i] === listener ||
-          (list[i].listener && list[i].listener === listener)) {
-        position = i;
-        break;
-      }
-    }
-
-    if (position < 0)
-      return this;
-
-    if (list.length === 1) {
-      list.length = 0;
-      delete this._events[type];
-    } else {
-      list.splice(position, 1);
-    }
-
-    if (this._events.removeListener)
-      this.emit('removeListener', type, listener);
-  }
-
-  return this;
-};
-
-EventEmitter.prototype.removeAllListeners = function(type) {
-  var key, listeners;
-
-  if (!this._events)
-    return this;
-
-  // not listening for removeListener, no need to emit
-  if (!this._events.removeListener) {
-    if (arguments.length === 0)
-      this._events = {};
-    else if (this._events[type])
-      delete this._events[type];
-    return this;
-  }
-
-  // emit removeListener for all listeners on all events
-  if (arguments.length === 0) {
-    for (key in this._events) {
-      if (key === 'removeListener') continue;
-      this.removeAllListeners(key);
-    }
-    this.removeAllListeners('removeListener');
-    this._events = {};
-    return this;
-  }
-
-  listeners = this._events[type];
-
-  if (isFunction(listeners)) {
-    this.removeListener(type, listeners);
-  } else {
-    // LIFO order
-    while (listeners.length)
-      this.removeListener(type, listeners[listeners.length - 1]);
-  }
-  delete this._events[type];
-
-  return this;
-};
-
-EventEmitter.prototype.listeners = function(type) {
-  var ret;
-  if (!this._events || !this._events[type])
-    ret = [];
-  else if (isFunction(this._events[type]))
-    ret = [this._events[type]];
-  else
-    ret = this._events[type].slice();
-  return ret;
-};
-
-EventEmitter.listenerCount = function(emitter, type) {
-  var ret;
-  if (!emitter._events || !emitter._events[type])
-    ret = 0;
-  else if (isFunction(emitter._events[type]))
-    ret = 1;
-  else
-    ret = emitter._events[type].length;
-  return ret;
-};
-
-function isFunction(arg) {
-  return typeof arg === 'function';
-}
-
-function isNumber(arg) {
-  return typeof arg === 'number';
-}
-
-function isObject(arg) {
-  return typeof arg === 'object' && arg !== null;
-}
-
-function isUndefined(arg) {
-  return arg === void 0;
-}
-
-},{}],22:[function(_dereq_,module,exports){
+},{"underscore":23}],20:[function(_dereq_,module,exports){
 /*
  *  Copyright 2011 Twitter, Inc.
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -5457,7 +5134,7 @@ function isUndefined(arg) {
   }
 })(typeof exports !== 'undefined' ? exports : Hogan);
 
-},{}],23:[function(_dereq_,module,exports){
+},{}],21:[function(_dereq_,module,exports){
 /*
  *  Copyright 2011 Twitter, Inc.
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -5480,7 +5157,7 @@ Hogan.Template = _dereq_('./template').Template;
 Hogan.template = Hogan.Template;
 module.exports = Hogan;
 
-},{"./compiler":22,"./template":24}],24:[function(_dereq_,module,exports){
+},{"./compiler":20,"./template":22}],22:[function(_dereq_,module,exports){
 /*
  *  Copyright 2011 Twitter, Inc.
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -5823,7 +5500,7 @@ var Hogan = {};
 
 })(typeof exports !== 'undefined' ? exports : Hogan);
 
-},{}],25:[function(_dereq_,module,exports){
+},{}],23:[function(_dereq_,module,exports){
 //     Underscore.js 1.6.0
 //     http://underscorejs.org
 //     (c) 2009-2014 Jeremy Ashkenas, DocumentCloud and Investigative Reporters & Editors

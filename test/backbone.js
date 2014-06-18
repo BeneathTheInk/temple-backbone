@@ -9,7 +9,7 @@ describe("Backbone", function() {
 
 	afterEach(function() {
 		if (tpl != null) {
-			tpl.erase();
+			tpl.detach();
 			tpl = null;
 		}
 
@@ -105,7 +105,7 @@ describe("Backbone", function() {
 			expect(tpl.get("col.foo").toJSON()).to.deep.equal({ id: "foo" });
 		});
 
-		it("sets model by id", function() {
+		it("sets on model by id", function() {
 			render();
 			var col = new Backbone.Collection([ { id: "foo" } ]);
 			tpl.set("col", col);
@@ -114,13 +114,13 @@ describe("Backbone", function() {
 			expect(col.get("foo").toJSON()).to.deep.equal({ id: "foo", bar: "baz" });
 		});
 
-		it("sets model by index", function() {
+		it("sets on model by index", function() {
 			render();
-			var col = new Backbone.Collection();
+			var col = new Backbone.Collection([ { id: "foo" } ]);
 			tpl.set("col", col);
 
-			tpl.set("col.0", { id: "foo" });
-			expect(col.get("foo").toJSON()).to.deep.equal({ id: "foo" });
+			tpl.set("col.0", { bar: "baz" });
+			expect(col.get("foo").toJSON()).to.deep.equal({ id: "foo", bar: "baz" });
 		});
 
 		it("notifies temple model of changes to backbone collection", function() {
