@@ -2,7 +2,7 @@
  * Temple Backbone
  * (c) 2014 Beneath the Ink, Inc.
  * MIT License
- * Version 1.0.2
+ * Version 1.0.3
  */
 
 !function(e){if("object"==typeof exports&&"undefined"!=typeof module)module.exports=e();else if("function"==typeof define&&define.amd)define([],e);else{var f;"undefined"!=typeof window?f=window:"undefined"!=typeof global?f=global:"undefined"!=typeof self&&(f=self),(f.Temple||(f.Temple={})).Backbone=e()}}(function(){var define,module,exports;return (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);throw new Error("Cannot find module '"+o+"'")}var f=n[o]={exports:{}};t[o][0].call(f.exports,function(e){var n=t[o][1][e];return s(n?n:e)},f,f.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(_dereq_,module,exports){
@@ -27,10 +27,8 @@ var ModelHandler = {
 		return model instanceof Backbone.Model;
 	},
 	construct: function(model) {
-		var self = this;
-
-		model.on("change", this._backboneListener = function() {
-			for (var k in this.changed) self.set(k, this.changed[k]);
+		this.listenTo(model, "change", function() {
+			for (var k in model.changed) this.set(k, model.changed[k]);
 		});
 	},
 	isLeaf: function() { return false; },
@@ -54,7 +52,7 @@ var ModelHandler = {
 		return true;
 	},
 	destroy: function(model) {
-		model.off("change", this._backboneListener);
+		this.stopListening(model);
 	}
 }
 
@@ -63,17 +61,57 @@ var CollectionHandler = {
 		return col instanceof Backbone.Collection;
 	},
 	construct: function(col) {
-		var self = this;
+		var self = this,
+			model_cache = col.toArray();
+
 		this.set("length", col.length);
 		
-		col.on( 'add remove reset sort', this._backboneListener = function () {
-			this.toArray().forEach(function(model, index) {
-				self.set(index, model);
-				self.set(model.cid, model);
-				if (model.id != null) self.set(model.id, model);
-			});
+		function setModel(model, index, remove) {
+			var method, val;
 
-			self.set("length", col.length);
+			if (remove) {
+				method = "unset";
+				val = { remove: true };
+			} else {
+				method = "set";
+				val = model;
+			}
+
+			self[method](index, val);
+			self[method](model.cid, val);
+			if (model.id != null) self[method](model.id, val);
+		}
+
+		function setAllModels() {
+			var m = model_cache = col.toArray();
+			m.forEach(function(model, index) {
+				setModel(model, index, false);
+			});
+		}
+
+		this.listenTo(col, {
+			add: function(model) {
+				var index = col.indexOf(model);
+				setModel(model, index, false);
+				this.set("length", col.length);
+				model_cache.splice(index, 0, model);
+			},
+			remove: function(model) {
+				var index = model_cache.indexOf(model);
+				if (!~index) return;
+				setModel(model, index, true);
+				this.set("length", col.length);
+				model_cache.splice(index, 1);
+			},
+			sort: setAllModels,
+			reset: function() {
+				model_cache.forEach(function(model, index) {
+					setModel(model, index, true);
+				});
+
+				addAllModels();
+				this.set("length", col.length);
+			}
 		});
 	},
 	isLeaf: function() { return false; },
@@ -98,9 +136,9 @@ var CollectionHandler = {
 		return true;
 	},
 	destroy: function(col) {
-		col.off('add remove reset sort', this._backboneListener);
+		this.stopListening(col);
 	}
 }
-},{}]},{},[1])
+},{"templejs":"+QSU3/"}]},{},[1])
 (1)
 });
