@@ -1,6 +1,6 @@
 {
 	"name": "temple-backbone",
-	"description": "Makes Temple more compatible with Backbone.",
+	"description": "Adds Backbone specific handlers to Temple.",
 	"version": "1.0.3",
 	"author": "Beneath the Ink <info@beneaththeink.com>",
 	"contributors": [
