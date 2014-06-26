@@ -1,7 +1,7 @@
 {
 	"name": "temple-backbone",
 	"description": "Adds Backbone specific handlers to Temple.",
-	"version": "1.0.5",
+	"version": "1.0.6",
 	"author": "Beneath the Ink <info@beneaththeink.com>",
 	"contributors": [
 		{

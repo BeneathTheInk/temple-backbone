@@ -2,7 +2,7 @@
  * Temple Backbone
  * (c) 2014 Beneath the Ink, Inc.
  * MIT License
- * Version 1.0.5
+ * Version 1.0.6
  */
 
 !function(e){if("object"==typeof exports&&"undefined"!=typeof module)module.exports=e();else if("function"==typeof define&&define.amd)define([],e);else{var f;"undefined"!=typeof window?f=window:"undefined"!=typeof global?f=global:"undefined"!=typeof self&&(f=self),(f.Temple||(f.Temple={})).Backbone=e()}}(function(){var define,module,exports;return (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);throw new Error("Cannot find module '"+o+"'")}var f=n[o]={exports:{}};t[o][0].call(f.exports,function(e){var n=t[o][1][e];return s(n?n:e)},f,f.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(_dereq_,module,exports){
@@ -28,8 +28,9 @@ var ModelHandler = {
 	},
 	construct: function(model) {
 		this.listenTo(model, "change", function() {
-			for (var k in model.changed)
+			for (var k in model.changed) {
 				this.set(k, model.changed[k], { reset: true });
+			}
 		});
 	},
 	isLeaf: function() { return false; },
@@ -110,7 +111,7 @@ var CollectionHandler = {
 					setModel(model, index, true);
 				});
 
-				addAllModels();
+				setAllModels();
 				self.set("length", col.length);
 			}
 		});
