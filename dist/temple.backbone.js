@@ -2,7 +2,7 @@
  * Temple Backbone
  * (c) 2014 Beneath the Ink, Inc.
  * MIT License
- * Version 1.0.7
+ * Version 1.0.8-alpha
  */
 
 !function(e){if("object"==typeof exports&&"undefined"!=typeof module)module.exports=e();else if("function"==typeof define&&define.amd)define([],e);else{var f;"undefined"!=typeof window?f=window:"undefined"!=typeof global?f=global:"undefined"!=typeof self&&(f=self),(f.Temple||(f.Temple={})).Backbone=e()}}(function(){var define,module,exports;return (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);throw new Error("Cannot find module '"+o+"'")}var f=n[o]={exports:{}};t[o][0].call(f.exports,function(e){var n=t[o][1][e];return s(n?n:e)},f,f.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(_dereq_,module,exports){
@@ -67,52 +67,35 @@ var CollectionHandler = {
 			model_cache = col.toArray();
 
 		this.set("length", col.length);
-		
-		function setModel(model, index, remove) {
-			var method, val;
 
-			if (remove) {
-				method = "unset";
-			} else {
-				method = "set";
-				val = model;
-			}
+		this.listenTo(col, "add remove sort reset", function() {
+			var models = col.toArray();
 
-			self[method](index.toString(), val);
-			self[method](model.cid, val);
-			if (model.id != null) self[method](model.id, val);
-		}
-
-		function setAllModels() {
-			var m = model_cache = col.toArray();
-			m.forEach(function(model, index) {
-				setModel(model, index, false);
+			models.forEach(function(model, index) {
+				self.set(index.toString(), model);
+				self.set(model.cid, model);
+				if (model.id != null) self.set(model.id, model);
 			});
-		}
 
-		this.listenTo(col, {
-			add: function(model) {
-				var index = col.indexOf(model);
-				setModel(model, index, false);
-				self.set("length", col.length);
-				model_cache.splice(index, 0, model);
-			},
-			remove: function(model) {
-				var index = model_cache.indexOf(model);
-				if (!~index) return;
-				setModel(model, index, true);
-				self.set("length", col.length);
-				model_cache.splice(index, 1);
-			},
-			sort: setAllModels,
-			reset: function() {
-				model_cache.forEach(function(model, index) {
-					setModel(model, index, true);
+			// calculate difference between old and new
+			var diff = model_cache.filter(function(model) {
+				return models.indexOf(model) < 0;
+			});
+
+			// remove old models
+			if (diff.length) {
+				diff.forEach(function(model) {
+					self.unset(model.cid);
+					if (model.id != null) self.unset(model.id);
 				});
 
-				setAllModels();
-				self.set("length", col.length);
+				for (var i = 0; i < diff.length; i++) {
+					self.unset((models.length + i).toString());
+				}
 			}
+
+			model_cache = models;
+			self.set("length", col.length);
 		});
 	},
 	isLeaf: function() { return false; },
