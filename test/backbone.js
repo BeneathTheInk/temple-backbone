@@ -17,8 +17,8 @@ describe("Backbone", function() {
 	});
 
 	function render(template, scope) {
-		tpl = new Temple.Mustache(template || "<span></span>", scope);
-		tpl.use(Temple.Backbone);
+		tpl = new Mustache(template || "<span></span>", scope);
+		tpl.use("backbone");
 		tpl.paint(doc);
 		return tpl;
 	}
