@@ -102,12 +102,14 @@
 
 				// remove old models
 				if (diff.length) {
+					console.log(diff, model_cache, models);
+					
 					diff.forEach(function(m) {
 						model.unset(m.cid);
 						if (m.id != null) model.unset(m.id);
 					});
 
-					for (var i = 0; i < diff.length; i++) {
+					for (var i = diff.length - 1; i >= 0; i--) {
 						model.unset((models.length + i).toString());
 					}
 				}
@@ -117,9 +119,7 @@
 			});
 		},
 		isLeaf: function() { return false; },
-		toArray: function() {
-			return this.target.toArray();
-		},
+		isArray: function() { return true; },
 		get: function(path) {
 			return CollectionProxy.get(this.target, path);
 		},
