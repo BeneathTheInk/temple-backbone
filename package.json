@@ -1,7 +1,7 @@
 {
 	"name": "temple-backbone",
 	"description": "Adds Backbone specific handlers to Temple.",
-	"version": "1.1.0",
+	"version": "1.1.1",
 	"author": "Beneath the Ink <info@beneaththeink.com>",
 	"contributors": [
 		{
@@ -16,9 +16,9 @@
 	},
 	"main": "./lib/backbone.js",
 	"devDependencies": {
-		"browserify": "4.1.5",
+		"browserify": "5.11.2",
 		"grunt": "0.4.5",
-		"grunt-contrib-uglify": "0.4.0",
+		"grunt-contrib-uglify": "0.5.1",
 		"grunt-wrap2000": "0.1.0"
 	},
 	"license": "MIT",

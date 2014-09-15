@@ -2,7 +2,7 @@
  * Temple Backbone
  * (c) 2014 Beneath the Ink, Inc.
  * MIT License
- * Version 1.1.0
+ * Version 1.1.1
  */
 
 (function ( global, factory ) {
@@ -101,9 +101,7 @@
 				});
 
 				// remove old models
-				if (diff.length) {
-					console.log(diff, model_cache, models);
-					
+				if (diff.length) {					
 					diff.forEach(function(m) {
 						model.unset(m.cid);
 						if (m.id != null) model.unset(m.id);
