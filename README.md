@@ -1,4 +1,4 @@
-# Temple Bacbone
+# Temple Backbone
 
 Adds Backbone specific handlers to [Temple](https://github.com/BeneathTheInk/Temple).
 
@@ -24,5 +24,5 @@ To use this plugin, call `.use(Temple.Backbone)` on a Temple view or viewmodel. 
 ```javascript
 view.use(Temple.Backbone);
 view.set("bone", new Backbone.Model({ foo: "bar" }));
-view.get("foo"); // "bar"
+view.get("bone.foo"); // "bar"
 ```

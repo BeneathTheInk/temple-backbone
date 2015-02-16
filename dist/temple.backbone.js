@@ -2,7 +2,7 @@
  * Temple Backbone
  * (c) 2014 Beneath the Ink, Inc.
  * MIT License
- * Version 1.1.1
+ * Version 1.1.2
  */
 
 (function ( global, factory ) {
@@ -40,9 +40,9 @@
 			this.target = target;
 			this.model = model;
 
-			this.target.on("change", this._onChange = function() {
-				for (var k in this.changed) {
-					model.set(k, this.changed[k], { reset: true });
+			this.target.on("change sync", this._onChange = function() {
+				for (var k in this.attributes) {
+					model.set(k, this.attributes[k], { reset: true });
 				}
 			});
 		},
@@ -67,7 +67,7 @@
 			return true;
 		},
 		destroy: function() {
-			this.target.off("change", this._onChange);
+			this.target.off("change sync", this._onChange);
 		}
 	}, {
 		match: function(target) {
