@@ -3,6 +3,9 @@
 	"description": "Adds Backbone specific handlers to Temple.",
 	"version": "1.1.2",
 	"author": "Beneath the Ink <info@beneaththeink.com>",
+	"publishConfig": {
+		"registry": "http://registry.npmjs.org"
+	},
 	"contributors": [
 		{
 			"name": "Tyler Johnson",
