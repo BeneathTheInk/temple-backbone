@@ -1,7 +1,7 @@
 {
 	"name": "temple-backbone",
 	"description": "Adds Backbone specific handlers to Temple Mustache.",
-	"version": "1.2.0",
+	"version": "1.2.1",
 	"author": "Beneath the Ink <info@beneaththeink.com>",
 	"publishConfig": {
 		"registry": "http://registry.npmjs.org"
@@ -24,7 +24,7 @@
 	"main": "./lib/backbone.js",
 	"devDependencies": {
 		"backbone": "~1.1.2",
-		"chai": "~2.1.0",
+		"chai": "~2.1.1",
 		"grunt": "~0.4.5",
 		"grunt-contrib-clean": "~0.6.0",
 		"grunt-contrib-uglify": "~0.8.0",
@@ -33,7 +33,7 @@
 		"grunt-wrap2000": "~0.1.0",
 		"minimist": "~1.1.0",
 		"mocha": "~2.1.0",
-		"temple-mustache": "~2.0.1",
+		"templejs": "~0.5.0",
 		"underscore": "~1.8.2"
 	},
 	"license": "MIT",

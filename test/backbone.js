@@ -1,5 +1,5 @@
 var Backbone = require("backbone"),
-	Mustache = require("temple-mustache"),
+	Temple = require("templejs"),
 	expect = require("./utils/expect");
 
 // load & register the plugin
@@ -24,7 +24,7 @@ describe("Backbone", function() {
 	});
 
 	function render(template, data) {
-		tpl = Mustache.render(template || "<span></span>", data);
+		tpl = Temple.render(template || "<span></span>", data);
 		tpl.use("backbone");
 		tpl.paint(doc);
 		return tpl;
@@ -48,7 +48,7 @@ describe("Backbone", function() {
 
 		it("gets are reactive on tracked models", function() {
 			var model = new Backbone.Model({ foo: "bar" });
-			Mustache.Backbone.trackModel(model);
+			Temple.Backbone.trackModel(model);
 			render(null, { model: model });
 			var seen = 0;
 
@@ -59,7 +59,7 @@ describe("Backbone", function() {
 			});
 
 			model.set("baz", "buz");
-			Mustache.Deps.flush();
+			Temple.Trackr.flush();
 			expect(seen).to.equal(2);
 		});
 	});
@@ -83,7 +83,7 @@ describe("Backbone", function() {
 
 		it("gets are reactive on tracked collections", function() {
 			var col = new Backbone.Collection();
-			Mustache.Backbone.trackCollection(col);
+			Temple.Backbone.trackCollection(col);
 			render(null, { col: col });var seen = 0;
 
 			tpl.autorun(function() {
@@ -97,7 +97,7 @@ describe("Backbone", function() {
 			});
 
 			col.add({ id: "foo" });
-			Mustache.Deps.flush();
+			Temple.Trackr.flush();
 			expect(seen).to.equal(2);
 		});
 	});
